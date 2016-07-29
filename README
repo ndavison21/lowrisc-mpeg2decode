@@ -1,3 +1,9 @@
+Modified by Nathanael Davison, nd359, for use with lowrisc architecture.
+- Main changes are in store.c
+- Other chanes are in mpeg2decode.c (mainly adding options)
+
+
+
                           mpeg2encode / mpeg2decode
                           =========================
               MPEG-2 Encoder / Decoder, Version 1.2, July 19, 1996
