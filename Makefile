@@ -55,12 +55,12 @@
 #
 
 # When compiling for desktop
-CC = gcc
-CFLAGS = -O2
+# CC = gcc
+# CFLAGS = -O2
 
 # When compiling for profiling:
-# CC = gcc
-# CFLAGS = -O2 -pg -fno-inline
+CC = gcc
+CFLAGS = -O2 -pg -fno-inline
 
 # When compiling for FPGA:
 # CC = riscv64-unknown-linux-gnu-gcc

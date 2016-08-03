@@ -57,6 +57,8 @@ static void putbyte _ANSI_ARGS_((int c));
 static void putword _ANSI_ARGS_((int w));
 static void conv422to444 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv420to422 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
+static void conv420to422_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
+static void conv422to444_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 
 #define OBFRSIZE 4096
 static unsigned char obfr[OBFRSIZE];
@@ -143,7 +145,7 @@ int offset, incr, height;
   int y, u, v, r, g, b;
   int crv, cbu, cgu, cgv;
   unsigned char *py, *pu, *pv;
-  unsigned char r_ch, g_ch, b_ch, byte[2];
+  unsigned char r_ch, g_ch, b_ch;
   static unsigned char *u422, *v422, *u444, *v444;
 
   if (chroma_format==CHROMA444)
@@ -176,15 +178,15 @@ int offset, incr, height;
 
     if (chroma_format==CHROMA420)
     {
-      conv420to422(src[1],u422);
-      conv420to422(src[2],v422);
-      conv422to444(u422,u444);
-      conv422to444(v422,v444);
+      conv420to422_noninterp(src[1],u422);
+      conv420to422_noninterp(src[2],v422);
+      conv422to444_noninterp(u422,u444);
+      conv422to444_noninterp(v422,v444);
     }
     else
     {
-      conv422to444(src[1],u444);
-      conv422to444(src[2],v444);
+      conv422to444_noninterp(src[1],u444);
+      conv422to444_noninterp(src[2],v444);
     }
   }
 
@@ -192,7 +194,7 @@ int offset, incr, height;
     fb_initialized = 1;
 
     /* Framebuffer stuff */
-    fbfd = open("/dev/fb0", O_RDWR);
+    if (fbfd == 0) fbfd = open("/dev/fb0", O_RDWR);
 
     if (fbfd == -1) {
       sprintf(Error_Text,"Couldn't open framebuffer\n");
@@ -277,7 +279,8 @@ int offset, incr, height;
 
       r_ch = r;
       g_ch = g;
-      b_ch = b;vinfo.yres = height;
+      b_ch = b;
+      vinfo.yres = height;
 
       if (vinfo.bits_per_pixel == 32) {
           *(fbp + location + 0) = b_ch;
@@ -285,10 +288,8 @@ int offset, incr, height;
           *(fbp + location + 2) = r_ch;
           *(fbp + location + 3) = 255;
       } else { // assume 16
-          byte[1] = (r & 0b11111000 ) | (g >> 5);
-          byte[0] = ((g << 3) & 0b11100000) | (b >> 3);
-          *(fbp + location + 0) = byte[0];
-          *(fbp + location + 1) = byte[1];
+          *(fbp + location + 0) = ((g << 3) & 0b11100000) | (b >> 3);
+          *(fbp + location + 1) = (r & 0b11111000 ) | (g >> 5);
       }
 
     }
@@ -306,6 +307,7 @@ int offset, incr, height;
   //   Error(Error_Text);
   // }
 }
+
 
 /* separate headerless files for y, u and v */
 static void store_yuv(outname,src,offset,incr,height)
@@ -403,8 +405,8 @@ int offset, incr, height;
         Error("malloc failed");
     }
   
-    conv420to422(src[1],u422);
-    conv420to422(src[2],v422);
+    conv420to422_noninterp(src[1],u422);
+    conv420to422_noninterp(src[2],v422);
   }
 
   strcat(outname,".SIF");
@@ -488,15 +490,15 @@ int tgaflag;
 
     if (chroma_format==CHROMA420)
     {
-      conv420to422(src[1],u422);
-      conv420to422(src[2],v422);
-      conv422to444(u422,u444);
-      conv422to444(v422,v444);
+      conv420to422_noninterp(src[1],u422);
+      conv420to422_noninterp(src[2],v422);
+      conv422to444_noninterp(u422,u444);
+      conv422to444_noninterp(v422,v444);
     }
     else
     {
-      conv422to444(src[1],u444);
-      conv422to444(src[2],v444);
+      conv422to444_noninterp(src[1],u444);
+      conv422to444_noninterp(src[2],v444);
     }
   }
 
@@ -587,6 +589,28 @@ int w;
   putbyte(w); putbyte(w>>8);
 }
 
+static void conv422to444_noninterp(src,dst)
+unsigned char *src,*dst;
+{
+  int i, i2, w, j;
+  w = Coded_Picture_Width>>1;
+
+  for (j=0; j<Coded_Picture_Height; j++)
+  {
+    for (i=0; i<w; i++)
+    {
+      printf("%u\n", src[i]);
+      i2 = i*2;
+      dst[i2] = src[i];
+
+      /* odd samples (21 -52 159 159 -52 21) */
+      dst[i2+1] = src[i];
+    }
+    src+= w;
+    dst+= Coded_Picture_Width;
+  }
+}
+
 /* horizontal 1:2 interpolation filter */
 // nd359: we're only doing MPEG-2 (so only need to do the top option)
 static void conv422to444(src,dst)
@@ -658,8 +682,29 @@ unsigned char *src,*dst;
   }
 }
 
+static void conv420to422_noninterp(src,dst)
+unsigned char *src, *dst;
+{
+  int w, h, i, j, j2;
+
+  w = Coded_Picture_Width>>1;
+  h = Coded_Picture_Height>>1;
+
+  for (i=0; i<w; i++)
+  {
+    for (j=0; j<h; j++)
+    {
+      j2 = j << 1;
+      dst[w*j2] = src[w*j];
+      dst[w*(j2+1)] = src[w*j];
+    }
+    src++;
+    dst++;
+  }  
+}
+
 /* vertical 1:2 interpolation filter */
-// nd359: seems to only use this function for non-progressive frames
+// nd359: seems to only use this function for progressive frames
 static void conv420to422(src,dst)
 unsigned char *src,*dst;
 {
@@ -668,6 +713,7 @@ unsigned char *src,*dst;
 
   w = Coded_Picture_Width>>1;
   h = Coded_Picture_Height>>1;
+
 
   if (progressive_frame)
   {
