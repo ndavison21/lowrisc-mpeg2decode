@@ -179,23 +179,15 @@ int offset, incr, height;
 
     if (chroma_format==CHROMA420)
     {
-      conv420to422(src[1],u422); // U data
-      conv420to422(src[2],v422); // V data
-      /* MUST INTERLEAVE YUV BEFORE SENDING TO STREAM PROCESSOR
-      *  Expected 422 format is:
-      *  -------------------------------------
-      *  |   Y0   |   U    |   Y1   |   V    |
-      *  -------------------------------------
-      *  | Byte 0 | Byte 1 | Byte 2 | Byte 3 |
-      *  -------------------------------------
-      */
-      conv422to444(u422,u444);
-      conv422to444(v422,v444);
+      conv420to422_noninterp(src[1],u422);
+      conv420to422_noninterp(src[2],v422);
+      conv422to444_noninterp(u422,u444);
+      conv422to444_noninterp(v422,v444);
     }
     else
     {
-      conv422to444(src[1],u444);
-      conv422to444(src[2],v444);
+      conv422to444_noninterp(src[1],u444);
+      conv422to444_noninterp(src[2],v444);
     }
   }
 
@@ -275,7 +267,7 @@ int offset, incr, height;
 
     for (j=0; j<horizontal_size; j++)
     {
-      convYuvToRgb();
+      convYuvToRgb(py, pu, pv, crv, cbu, cgu, cgv, &r, &g, &b);
       // u = *pu++ - 128;
       // v = *pv++ - 128;
       // y = 76309 * (*py++ - 16); /* (255/219)*65536 */
@@ -425,8 +417,8 @@ int offset, incr, height;
         Error("malloc failed");
     }
   
-    conv420to422(src[1],u422);
-    conv420to422(src[2],v422);
+    conv420to422_noninterp(src[1],u422);
+    conv420to422_noninterp(src[2],v422);
   }
 
   strcat(outname,".SIF");
@@ -510,15 +502,15 @@ int tgaflag;
 
     if (chroma_format==CHROMA420)
     {
-      conv420to422(src[1],u422);
-      conv420to422(src[2],v422);
-      conv422to444(u422,u444);
-      conv422to444(v422,v444);
+      conv420to422_noninterp(src[1],u422);
+      conv420to422_noninterp(src[2],v422);
+      conv422to444_noninterp(u422,u444);
+      conv422to444_noninterp(v422,v444);
     }
     else
     {
-      conv422to444(src[1],u444);
-      conv422to444(src[2],v444);
+      conv422to444_noninterp(src[1],u444);
+      conv422to444_noninterp(src[2],v444);
     }
   }
 

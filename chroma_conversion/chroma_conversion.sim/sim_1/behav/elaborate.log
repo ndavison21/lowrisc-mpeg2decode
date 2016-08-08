@@ -1,6 +1,6 @@
-Vivado Simulator 2015.4
-Copyright 1986-1999, 2001-2015 Xilinx, Inc. All Rights Reserved.
-Running: /usr/groups/comparch-lowrisc/tools/xilinx/Vivado/2015.4/bin/unwrapped/lnx64.o/xelab -wto 09f3d68d4ba145288e6e89aeba023acf --debug typical --relax --mt 8 -L xil_defaultlib -L unisims_ver -L unimacro_ver -L secureip --snapshot yuv420to444_tb_behav xil_defaultlib.yuv420to444_tb xil_defaultlib.glbl -log elaborate.log 
+Vivado Simulator 2016.2
+Copyright 1986-1999, 2001-2016 Xilinx, Inc. All Rights Reserved.
+Running: /usr/groups/comparch-lowrisc/tools/xilinx/Vivado/2016.2/bin/unwrapped/lnx64.o/xelab -wto 09f3d68d4ba145288e6e89aeba023acf --debug typical --relax --mt 8 -L xil_defaultlib -L unisims_ver -L unimacro_ver -L secureip --snapshot yuv420to444_tb_behav xil_defaultlib.yuv420to444_tb xil_defaultlib.glbl -log elaborate.log 
 Using 8 slave threads.
 Starting static elaboration
 Completed static elaboration
@@ -10,7 +10,7 @@ WARNING: [XSIM 43-4100] "/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chr
 Completed simulation data flow analysis
 Time Resolution for simulation is 1ps
 Compiling module xil_defaultlib.nasti_stream_channel
-Compiling module xil_defaultlib.yuv420to422_noninterp
+Compiling module xil_defaultlib.yuv420to444_noninterp
 Compiling module xil_defaultlib.yuv420to444_tb
 Compiling module xil_defaultlib.glbl
 Built simulation snapshot yuv420to444_tb_behav

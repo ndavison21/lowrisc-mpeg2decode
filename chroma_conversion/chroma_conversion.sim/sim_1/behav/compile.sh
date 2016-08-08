@@ -1,5 +1,5 @@
 #!/bin/bash -f
-xv_path="/usr/groups/comparch-lowrisc/tools/xilinx/Vivado/2015.4"
+xv_path="/usr/groups/comparch-lowrisc/tools/xilinx/Vivado/2016.2"
 ExecStep()
 {
 "$@"
