@@ -1,7 +1,10 @@
 
 #include <stdio.h>
+#include <stdlib.h>
 #include "config.h"
 #include "global.h"
+
+#include <string.h>
 
 /* private prototypes */
 static void Read_Lower_Layer_Component_Framewise _ANSI_ARGS_((int comp, int lw, int lh));

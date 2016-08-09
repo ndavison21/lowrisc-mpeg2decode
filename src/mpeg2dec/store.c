@@ -36,6 +36,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 
+#include <string.h>
 #include <time.h>
 
 #include "config.h"
@@ -59,7 +60,10 @@ static void conv422to444 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv420to422 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv420to422_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv422to444_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
-static void convYuvToRgb _ANSI_ARGS_ (());
+static void planar422ToPacked422 _ANSI_ARGS_((unsigned char *src[], unsigned char *dst));
+static void convYuvToRgb _ANSI_ARGS_ ((int y, int u, int v, int crv, 
+                                        int cbu, int cgu, int cgv, unsigned char *r, unsigned char  *g, unsigned char  *b));
+static void convYuvToRgb_packed _ANSI_ARGS_ ((unsigned char *p, int *r, int *g, int *b));
 
 #define OBFRSIZE 4096
 static unsigned char obfr[OBFRSIZE];
@@ -134,9 +138,6 @@ static struct fb_var_screeninfo vinfo, vinfo_bak;
 static struct fb_fix_screeninfo finfo;
 static long int screensize = 0;
 static char *fbp = 0;
-static int y, u, v, r, g, b;
-static int crv, cbu, cgu, cgv;
-static unsigned char *py, *pu, *pv;
 
 /* function by nd359: Outputting straight to Framebuffer */
 static void display(src, offset, incr, height)
@@ -146,7 +147,9 @@ int offset, incr, height;
   unsigned int i = 0, j = 0;
   long int location = 0;
   
-  unsigned char r_ch, g_ch, b_ch;
+  int y, u, v, crv, cbu, cgu, cgv;
+  unsigned char r, g, b, *py, *pu, *pv;
+
   static unsigned char *u422, *v422, *u444, *v444;
 
   if (chroma_format==CHROMA444)
@@ -275,10 +278,10 @@ int offset, incr, height;
 
     for (j=0; j<horizontal_size; j++)
     {
-      convYuvToRgb();
-      // u = *pu++ - 128;
-      // v = *pv++ - 128;
-      // y = 76309 * (*py++ - 16); /* (255/219)*65536 */
+      u = *pu++ - 128;
+      v = *pv++ - 128;
+      y = 76309 * (*py++ - 16); /* (255/219)*65536 */
+      convYuvToRgb(y, u, v, crv, cbu, cgu, cgv, &r, &g, &b);
       // r = Clip[(y + crv*v + 32768)>>16];
       // g = Clip[(y - cgu*u - cgv*v + 32768)>>16];
       // b = Clip[(y + cbu*u + 32786)>>16];
@@ -287,15 +290,12 @@ int offset, incr, height;
       location = (j + vinfo.xoffset) * (vinfo.bits_per_pixel/8) +
                   (i + vinfo.yoffset) * finfo.line_length;
 
-      r_ch = r;
-      g_ch = g;
-      b_ch = b;
       vinfo.yres = height;
 
       if (vinfo.bits_per_pixel == 32) {
-          *(fbp + location + 0) = b_ch;
-          *(fbp + location + 1) = g_ch;
-          *(fbp + location + 2) = r_ch;
+          *(fbp + location + 0) = b;
+          *(fbp + location + 1) = g;
+          *(fbp + location + 2) = r;
           *(fbp + location + 3) = 255;
       } else { // assume 16
           *(fbp + location + 0) = ((g << 3) & 0b11100000) | (b >> 3);
@@ -318,14 +318,42 @@ int offset, incr, height;
   // }
 }
 
-static void convYuvToRgb()
+/*
+* Function by nd359: Converting from planar YUV444 to RGB
+* - Using method from existing implementation
+*/
+static void convYuvToRgb(y,u,v,crv,cbu,cgu,cgv,r,g,b)
+int y, u, v, crv, cbu, cgu, cgv;
+unsigned char *r, *g, *b;
 {
-  u = *pu++ - 128;
-  v = *pv++ - 128;
-  y = 76309 * (*py++ - 16); /* (255/219)*65536 */
-  r = Clip[(y + crv*v + 32768)>>16];
-  g = Clip[(y - cgu*u - cgv*v + 32768)>>16];
-  b = Clip[(y + cbu*u + 32786)>>16];
+  *r = Clip[(y + crv*v + 32768)>>16];
+  *g = Clip[(y - cgu*u - cgv*v + 32768)>>16];
+  *b = Clip[(y + cbu*u + 32786)>>16];
+}
+
+/*
+* Function by nd359: Converting from packed YUV444 to RGB
+* - Using method from wikipedia
+*/
+static void convYuvToRgb_packed(p,r,g,b)
+unsigned char *p;
+int *r,*g,*b;
+{
+  unsigned char y, u, v;
+  int c, d, e;
+
+  y = p[0];
+  u = p[1];
+  v = p[2];
+
+  c = 298 * (y - 16);
+  d = u - 128;
+  e = v - 128;
+
+
+  *r = Clip[(c + 409 * (e) + 128) >> 8];
+  *g = Clip[(c - 100 * (d) - 208 * (e) + 128) >> 8];
+  *b = Clip [(c + 516 * (d) + 128) >> 8];
 }
 
 
@@ -609,6 +637,9 @@ int w;
   putbyte(w); putbyte(w>>8);
 }
 
+
+
+
 static void conv422to444_noninterp(src,dst)
 unsigned char *src,*dst;
 {
@@ -627,6 +658,28 @@ unsigned char *src,*dst;
     }
     src+= w;
     dst+= Coded_Picture_Width;
+  }
+}
+
+
+/*
+* Planar format has all 2n Y's, followed by all n U's, followed by all n V's.
+* This is more compressable, but not useful for stream processing in hardware.
+* Therefore we convert to packed format, which has n groups of Y0, U, Y1, V.
+* (nicely fits in 32 bits as well, which means we can send groups 2 at a time 
+*  to the stream processor).
+*/
+static void planar422ToPacked422(src,dst)
+unsigned char *src[],*dst;
+{
+  int y=0, u=0, v=0, k=0;
+
+  while (u<Coded_Picture_Height*(Coded_Picture_Width >> 1))
+  {
+    dst[k++] = src[0][y++]; // Y0
+    dst[k++] = src[1][u++]; // U
+    dst[k++] = src[0][y++]; // Y1
+    dst[k++] = src[2][v++]; // V
   }
 }
 
