@@ -1,0 +1,8 @@
+language: c
+script:
+- make
+- make test
+notifications:
+  email:
+    on_success: always
+    on_failure: always
