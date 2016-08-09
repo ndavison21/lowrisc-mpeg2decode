@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -e
 ../src/mpeg2enc/mpeg2encode test.par new.m2v
 echo Verifying bitstream
 cmp test.m2v new.m2v
