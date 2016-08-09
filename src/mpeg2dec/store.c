@@ -63,6 +63,7 @@ static void conv422to444_noninterp _ANSI_ARGS_((unsigned char *src, unsigned cha
 static void planar422ToPacked422 _ANSI_ARGS_((unsigned char *src[], unsigned char *dst));
 static void convYuvToRgb _ANSI_ARGS_ ((int y, int u, int v, int crv, 
                                         int cbu, int cgu, int cgv, unsigned char *r, unsigned char  *g, unsigned char  *b));
+static void convYuvToRgb_simple _ANSI_ARGS_ ((int y, int u, int v, unsigned char *r, unsigned char  *g, unsigned char  *b));
 static void convYuvToRgb_packed _ANSI_ARGS_ ((unsigned char *p, int *r, int *g, int *b));
 
 #define OBFRSIZE 4096
@@ -329,6 +330,24 @@ unsigned char *r, *g, *b;
   *r = Clip[(y + crv*v + 32768)>>16];
   *g = Clip[(y - cgu*u - cgv*v + 32768)>>16];
   *b = Clip[(y + cbu*u + 32786)>>16];
+}
+
+/*
+* Function by nd359: Converting from planar YUV444 to RGB
+* - Using method from existing implementation
+*/
+static void convYuvToRgb_simple(y,u,v,r,g,b)
+int y, u, v;
+unsigned char *r, *g, *b;
+{
+  int c,d,e;
+  c = 298 * (y - 16);
+  d = u - 128;
+  e = v - 128;
+
+  *r = Clip[(c + 409 * (e) + 128) >> 8];
+  *g = Clip[(c - 100 * (d) - 208 * (e) + 128) >> 8];
+  *b = Clip [(c + 516 * (d) + 128) >> 8];
 }
 
 /*
