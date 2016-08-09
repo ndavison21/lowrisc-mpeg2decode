@@ -2,7 +2,7 @@
 ../src/mpeg2enc/mpeg2encode test.par new.m2v
 echo Verifying bitstream
 cmp test.m2v new.m2v
-../src./mpeg2dec/mpeg2decode -f -b new.m2v -o0 r%d
+../src/mpeg2dec/mpeg2decode -f -b new.m2v -o0 r%d
 echo Comparing encoder and decoder output
 cmp q0.Y r0.Y
 cmp q1.Y r1.Y
