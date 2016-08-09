@@ -56,9 +56,9 @@ static void store_yuv1 _ANSI_ARGS_((char *name, unsigned char *src,
 static void display _ANSI_ARGS_((unsigned char *src[], int offset, int incr, int height));
 static void putbyte _ANSI_ARGS_((int c));
 static void putword _ANSI_ARGS_((int w));
-static void conv422to444_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
-static void conv422to422_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
-static void conv422to422_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
+static void conv422to444 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
+static void conv420to422 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
+static void conv420to422_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv422to444_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void planar422ToPacked422 _ANSI_ARGS_((unsigned char *src[], unsigned char *dst));
 static void convYuvToRgb _ANSI_ARGS_ ((int y, int u, int v, int crv, 
@@ -183,8 +183,8 @@ int offset, incr, height;
 
     if (chroma_format==CHROMA420)
     {
-      conv422to422_noninterp(src[1],u422); // U data
-      conv422to422_noninterp(src[2],v422); // V data
+      conv420to422_noninterp(src[1],u422); // U data
+      conv420to422_noninterp(src[2],v422); // V data
       /* MUST INTERLEAVE YUV BEFORE SENDING TO STREAM PROCESSOR
       *  Expected 422 format is:
       *  -------------------------------------
@@ -472,8 +472,8 @@ int offset, incr, height;
         Error("malloc failed");
     }
   
-    conv422to422_noninterp(src[1],u422);
-    conv422to422_noninterp(src[2],v422);
+    conv420to422_noninterp(src[1],u422);
+    conv420to422_noninterp(src[2],v422);
   }
 
   strcat(outname,".SIF");
@@ -557,8 +557,8 @@ int tgaflag;
 
     if (chroma_format==CHROMA420)
     {
-      conv422to422_noninterp(src[1],u422);
-      conv422to422_noninterp(src[2],v422);
+      conv420to422_noninterp(src[1],u422);
+      conv420to422_noninterp(src[2],v422);
       conv422to444_noninterp(u422,u444);
       conv422to444_noninterp(v422,v444);
     }
@@ -704,7 +704,7 @@ unsigned char *src[],*dst;
 
 /* horizontal 1:2 interpolation filter */
 // nd359: we're only doing MPEG-2 (so only need to do the top option)
-static void conv422to444_noninterp(src,dst)
+static void conv422to444(src,dst)
 unsigned char *src,*dst;
 {
   int i, i2, w, j, im3, im2, im1, ip1, ip2, ip3;
@@ -773,7 +773,7 @@ unsigned char *src,*dst;
   }
 }
 
-static void conv422to422_noninterp(src,dst)
+static void conv420to422_noninterp(src,dst)
 unsigned char *src, *dst;
 {
   int w, h, i, j, j2;
@@ -796,7 +796,7 @@ unsigned char *src, *dst;
 
 /* vertical 1:2 interpolation filter */
 // nd359: seems to only use this function for progressive frames
-static void conv422to422_noninterp(src,dst)
+static void conv420to422(src,dst)
 unsigned char *src,*dst;
 {
   int w, h, i, j, j2;
