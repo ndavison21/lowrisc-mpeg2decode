@@ -56,13 +56,12 @@ static void store_yuv1 _ANSI_ARGS_((char *name, unsigned char *src,
 static void display _ANSI_ARGS_((unsigned char *src[], int offset, int incr, int height));
 static void putbyte _ANSI_ARGS_((int c));
 static void putword _ANSI_ARGS_((int w));
-static void conv422to444 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv420to422 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
+static void conv422to444 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv420to422_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv422to444_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
-static void planar422ToPacked422 _ANSI_ARGS_((unsigned char *src[], unsigned char *dst));
-static void convYuvToRgb _ANSI_ARGS_ ((int y, int u, int v, int crv, 
-                                        int cbu, int cgu, int cgv, unsigned char *r, unsigned char  *g, unsigned char  *b));
+static void convPlanar422ToPacked422 _ANSI_ARGS_((unsigned char *src[], unsigned char *dst));
+static void convYuvToRgb _ANSI_ARGS_ ((int y, int u, int v, int crv, int cbu, int cgu, int cgv, unsigned char *r, unsigned char  *g, unsigned char  *b));
 static void convYuvToRgb_simple _ANSI_ARGS_ ((int y, int u, int v, unsigned char *r, unsigned char  *g, unsigned char  *b));
 static void convYuvToRgb_packed _ANSI_ARGS_ ((unsigned char *p, int *r, int *g, int *b));
 
@@ -279,10 +278,15 @@ int offset, incr, height;
 
     for (j=0; j<horizontal_size; j++)
     {
-      u = *pu++ - 128;
-      v = *pv++ - 128;
-      y = 76309 * (*py++ - 16); /* (255/219)*65536 */
-      convYuvToRgb(y, u, v, crv, cbu, cgu, cgv, &r, &g, &b);
+      // u = *pu++ - 128;
+      // v = *pv++ - 128;
+      // y = 76309 * (*py++ - 16); /* (255/219)*65536 */
+      // convYuvToRgb(y, u, v, crv, cbu, cgu, cgv, &r, &g, &b);
+
+      u = *pu++;
+      v = *pv++;
+      y = *py++;
+      convYuvToRgb_simple(y, u, v, &r, &g, &b);
       // r = Clip[(y + crv*v + 32768)>>16];
       // g = Clip[(y - cgu*u - cgv*v + 32768)>>16];
       // b = Clip[(y + cbu*u + 32786)>>16];
@@ -345,9 +349,10 @@ unsigned char *r, *g, *b;
   d = u - 128;
   e = v - 128;
 
-  *r = Clip[(c + 409 * (e) + 128) >> 8];
-  *g = Clip[(c - 100 * (d) - 208 * (e) + 128) >> 8];
-  *b = Clip [(c + 516 * (d) + 128) >> 8];
+  *r = Clip[(c + 409 * e + 128) >> 8];
+  *g = Clip[(c - 100 * d - 208 * e + 128) >> 8];
+  *b = Clip[(c + 516 * d + 128) >> 8];
+
 }
 
 /*
@@ -688,7 +693,7 @@ unsigned char *src,*dst;
 * (nicely fits in 32 bits as well, which means we can send groups 2 at a time 
 *  to the stream processor).
 */
-static void planar422ToPacked422(src,dst)
+static void convPlanar422ToPacked422(src,dst)
 unsigned char *src[],*dst;
 {
   int y=0, u=0, v=0, k=0;
