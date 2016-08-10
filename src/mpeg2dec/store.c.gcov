@@ -1,0 +1,913 @@
+        -:    0:Source:store.c
+        -:    0:Graph:store.gcno
+        -:    0:Data:store.gcda
+        -:    0:Runs:2
+        -:    0:Programs:1
+        -:    1:/* store.c, picture output routines                                         */
+        -:    2:
+        -:    3:/* Copyright (C) 1996, MPEG Software Simulation Group. All Rights Reserved. */
+        -:    4:
+        -:    5:/*
+        -:    6: * Disclaimer of Warranty
+        -:    7: *
+        -:    8: * These software programs are available to the user without any license fee or
+        -:    9: * royalty on an "as is" basis.  The MPEG Software Simulation Group disclaims
+        -:   10: * any and all warranties, whether express, implied, or statuary, including any
+        -:   11: * implied warranties or merchantability or of fitness for a particular
+        -:   12: * purpose.  In no event shall the copyright-holder be liable for any
+        -:   13: * incidental, punitive, or consequential damages of any kind whatsoever
+        -:   14: * arising from the use of these programs.
+        -:   15: *
+        -:   16: * This disclaimer of warranty extends to the user of these programs and user's
+        -:   17: * customers, employees, agents, transferees, successors, and assigns.
+        -:   18: *
+        -:   19: * The MPEG Software Simulation Group does not represent or warrant that the
+        -:   20: * programs furnished hereunder are free of infringement of any third-party
+        -:   21: * patents.
+        -:   22: *
+        -:   23: * Commercial implementations of MPEG-1 and MPEG-2 video, including shareware,
+        -:   24: * are subject to royalty fees to patent holders.  Many of these patents are
+        -:   25: * general enough such that they are unavoidable regardless of implementation
+        -:   26: * design.
+        -:   27: *
+        -:   28: */
+        -:   29:
+        -:   30:#include <stdio.h>
+        -:   31:#include <stdlib.h>
+        -:   32:#include <fcntl.h>
+        -:   33:#include <unistd.h>
+        -:   34:#include <stdio.h>
+        -:   35:#include <linux/fb.h>
+        -:   36:#include <sys/mman.h>
+        -:   37:#include <sys/ioctl.h>
+        -:   38:
+        -:   39:#include <string.h>
+        -:   40:#include <time.h>
+        -:   41:
+        -:   42:#include "config.h"
+        -:   43:#include "global.h"
+        -:   44:
+        -:   45:/* private prototypes */
+        -:   46:static void store_one _ANSI_ARGS_((char *outname, unsigned char *src[],
+        -:   47:  int offset, int incr, int height));
+        -:   48:static void store_yuv _ANSI_ARGS_((char *outname, unsigned char *src[],
+        -:   49:  int offset, int incr, int height));
+        -:   50:static void store_sif _ANSI_ARGS_((char *outname, unsigned char *src[],
+        -:   51:  int offset, int incr, int height));
+        -:   52:static void store_ppm_tga _ANSI_ARGS_((char *outname, unsigned char *src[],
+        -:   53:  int offset, int incr, int height, int tgaflag));
+        -:   54:static void store_yuv1 _ANSI_ARGS_((char *name, unsigned char *src,
+        -:   55:  int offset, int incr, int width, int height));
+        -:   56:static void display _ANSI_ARGS_((unsigned char *src[], int offset, int incr, int height));
+        -:   57:static void putbyte _ANSI_ARGS_((int c));
+        -:   58:static void putword _ANSI_ARGS_((int w));
+        -:   59:static void conv422to444 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
+        -:   60:static void conv420to422 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
+        -:   61:static void conv420to422_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
+        -:   62:static void conv422to444_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
+        -:   63:static void planar422ToPacked422 _ANSI_ARGS_((unsigned char *src[], unsigned char *dst));
+        -:   64:static void convYuvToRgb _ANSI_ARGS_ ((int y, int u, int v, int crv, 
+        -:   65:                                        int cbu, int cgu, int cgv, unsigned char *r, unsigned char  *g, unsigned char  *b));
+        -:   66:static void convYuvToRgb_simple _ANSI_ARGS_ ((int y, int u, int v, unsigned char *r, unsigned char  *g, unsigned char  *b));
+        -:   67:static void convYuvToRgb_packed _ANSI_ARGS_ ((unsigned char *p, int *r, int *g, int *b));
+        -:   68:
+        -:   69:#define OBFRSIZE 4096
+        -:   70:static unsigned char obfr[OBFRSIZE];
+        -:   71:static unsigned char *optr;
+        -:   72:static int outfile;
+        -:   73:
+        -:   74:/*
+        -:   75: * store a picture as either one frame or two fields
+        -:   76: */
+        6:   77:void Write_Frame(src,frame)
+        -:   78:unsigned char *src[];
+        -:   79:int frame;
+        -:   80:{
+        -:   81:  char outname[FILENAME_LENGTH];
+        -:   82:
+        6:   83:  if (progressive_sequence || progressive_frame || Frame_Store_Flag)
+        -:   84:  {
+        -:   85:    /* progressive */
+        6:   86:    sprintf(outname,Output_Picture_Filename,frame,'f');
+        6:   87:    store_one(outname,src,0,Coded_Picture_Width,vertical_size);
+        -:   88:  }
+        -:   89:  else
+        -:   90:  {
+        -:   91:    /* interlaced */
+    #####:   92:    sprintf(outname,Output_Picture_Filename,frame,'a');
+    #####:   93:    store_one(outname,src,0,Coded_Picture_Width<<1,vertical_size>>1);
+        -:   94:
+    #####:   95:    sprintf(outname,Output_Picture_Filename,frame,'b');
+    #####:   96:    store_one(outname,src,
+        -:   97:      Coded_Picture_Width,Coded_Picture_Width<<1,vertical_size>>1);
+        -:   98:  }
+        6:   99:}
+        -:  100:
+        -:  101:/*
+        -:  102: * store one frame or one field
+        -:  103: */
+        6:  104:static void store_one(outname,src,offset,incr,height)
+        -:  105:char *outname;
+        -:  106:unsigned char *src[];
+        -:  107:int offset, incr, height;
+        -:  108:{
+        6:  109:  switch (Output_Type)
+        -:  110:  {
+        -:  111:  case T_YUV:
+        6:  112:    store_yuv(outname,src,offset,incr,height);
+        6:  113:    break;
+        -:  114:  case T_SIF:
+    #####:  115:    store_sif(outname,src,offset,incr,height);
+    #####:  116:    break;
+        -:  117:  case T_TGA:
+    #####:  118:    store_ppm_tga(outname,src,offset,incr,height,1);
+    #####:  119:    break;
+        -:  120:  case T_PPM:
+    #####:  121:    store_ppm_tga(outname,src,offset,incr,height,0);
+    #####:  122:    break;
+        -:  123:  case DISPLAY_PPM:
+    #####:  124:     display(src, offset, incr, height);
+    #####:  125:    break;
+        -:  126:#ifdef DISPLAY
+        -:  127:  case T_X11:
+        -:  128:    dither(src);
+        -:  129:    break;
+        -:  130:#endif
+        -:  131:  default:
+        -:  132:    break;
+        -:  133:  }
+        6:  134:}
+        -:  135:
+        -:  136:static int fb_initialized = 0;
+        -:  137:static int fbfd = 0;
+        -:  138:static struct fb_var_screeninfo vinfo, vinfo_bak;
+        -:  139:static struct fb_fix_screeninfo finfo;
+        -:  140:static long int screensize = 0;
+        -:  141:static char *fbp = 0;
+        -:  142:
+        -:  143:/* function by nd359: Outputting straight to Framebuffer */
+    #####:  144:static void display(src, offset, incr, height)
+        -:  145:unsigned char *src[];
+        -:  146:int offset, incr, height;
+        -:  147:{
+        -:  148:  unsigned int i = 0, j = 0;
+        -:  149:  long int location = 0;
+        -:  150:  
+        -:  151:  int y, u, v, crv, cbu, cgu, cgv;
+        -:  152:  unsigned char r, g, b, *py, *pu, *pv;
+        -:  153:
+        -:  154:  static unsigned char *u422, *v422, *u444, *v444;
+        -:  155:
+    #####:  156:  if (chroma_format==CHROMA444)
+        -:  157:  {
+    #####:  158:    u444 = src[1];
+    #####:  159:    v444 = src[2];
+        -:  160:  }
+        -:  161:  else
+        -:  162:  {
+    #####:  163:    if (!u444)
+        -:  164:    {
+    #####:  165:      if (chroma_format==CHROMA420)
+        -:  166:      {
+    #####:  167:        if (!(u422 = (unsigned char *)malloc((Coded_Picture_Width>>1)
+    #####:  168:                                             *Coded_Picture_Height)))
+    #####:  169:          Error("malloc failed");
+    #####:  170:        if (!(v422 = (unsigned char *)malloc((Coded_Picture_Width>>1)
+    #####:  171:                                             *Coded_Picture_Height)))
+    #####:  172:          Error("malloc failed");
+        -:  173:      }
+        -:  174:
+    #####:  175:      if (!(u444 = (unsigned char *)malloc(Coded_Picture_Width
+    #####:  176:                                           *Coded_Picture_Height)))
+    #####:  177:        Error("malloc failed");
+        -:  178:
+    #####:  179:      if (!(v444 = (unsigned char *)malloc(Coded_Picture_Width
+    #####:  180:                                           *Coded_Picture_Height)))
+    #####:  181:        Error("malloc failed");
+        -:  182:    }
+        -:  183:
+    #####:  184:    if (chroma_format==CHROMA420)
+        -:  185:    {
+    #####:  186:      conv420to422_noninterp(src[1],u422); // U data
+    #####:  187:      conv420to422_noninterp(src[2],v422); // V data
+        -:  188:      /* MUST INTERLEAVE YUV BEFORE SENDING TO STREAM PROCESSOR
+        -:  189:      *  Expected 422 format is:
+        -:  190:      *  -------------------------------------
+        -:  191:      *  |   Y0   |   U    |   Y1   |   V    |
+        -:  192:      *  -------------------------------------
+        -:  193:      *  | Byte 0 | Byte 1 | Byte 2 | Byte 3 |
+        -:  194:      *  -------------------------------------
+        -:  195:      */
+    #####:  196:      conv422to444_noninterp(u422,u444);
+    #####:  197:      conv422to444_noninterp(v422,v444);
+        -:  198:    }
+        -:  199:    else
+        -:  200:    {
+    #####:  201:      conv422to444_noninterp(src[1],u444);
+    #####:  202:      conv422to444_noninterp(src[2],v444);
+        -:  203:    }
+        -:  204:  }
+        -:  205:
+    #####:  206:  if (!fb_initialized) {
+    #####:  207:    fb_initialized = 1;
+        -:  208:
+        -:  209:    /* Framebuffer stuff */
+    #####:  210:    if (fbfd == 0) fbfd = open("/dev/fb0", O_RDWR);
+        -:  211:
+    #####:  212:    if (fbfd == -1) {
+        -:  213:      sprintf(Error_Text,"Couldn't open framebuffer\n");
+    #####:  214:      Error(Error_Text);
+        -:  215:    }
+        -:  216:
+    #####:  217:    if (ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo) == -1) {
+        -:  218:      sprintf(Error_Text,"Could not read variable framebuffer-information\n");
+    #####:  219:      Error(Error_Text);
+        -:  220:    }
+        -:  221:
+    #####:  222:    vinfo_bak = vinfo;
+        -:  223:
+    #####:  224:    vinfo.bits_per_pixel = 32;
+    #####:  225:    vinfo.xres = horizontal_size;
+    #####:  226:    vinfo.xres_virtual = horizontal_size;
+    #####:  227:    vinfo.yres = height;
+    #####:  228:    vinfo.yres_virtual = height * 2;
+        -:  229:
+    #####:  230:    if (ioctl(fbfd, FBIOPUT_VSCREENINFO, &vinfo) == -1) {
+        -:  231:      sprintf(Error_Text,"Could not set variable framebuffer-information\n");
+    #####:  232:      Error(Error_Text);
+        -:  233:    }
+        -:  234:
+    #####:  235:    if (ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo) == -1) {
+        -:  236:      sprintf(Error_Text,"Could not get variable framebuffer-information\n");
+    #####:  237:      Error(Error_Text);
+        -:  238:    }
+        -:  239:
+        -:  240:    // Get fixed screen information
+    #####:  241:    if (ioctl(fbfd, FBIOGET_FSCREENINFO, &finfo) == -1) {
+        -:  242:      sprintf(Error_Text,"Could not read fixed framebuffer-information\n");
+    #####:  243:      Error(Error_Text);
+        -:  244:    }
+        -:  245:
+        -:  246:    // Figure out the size of the screen in bytes
+    #####:  247:    screensize = vinfo.yres * finfo.line_length;
+        -:  248:
+        -:  249:    // Map the device to memory
+    #####:  250:    fbp = (char *)mmap(0, screensize*2, PROT_READ | PROT_WRITE, MAP_SHARED,
+        -:  251:                        fbfd, 0);
+        -:  252:
+    #####:  253:    if ((long)fbp == -1) {
+        -:  254:      sprintf(Error_Text,"Failed to map framebuffer device to memory\n");
+    #####:  255:      Error(Error_Text);
+        -:  256:    }
+        -:  257:  }
+        -:  258:
+        -:  259:  // Set up for double buffering 
+    #####:  260:  if (vinfo.yoffset == vinfo.yres)
+    #####:  261:    vinfo.yoffset = 0;
+        -:  262:  else
+    #####:  263:    vinfo.yoffset = vinfo.yres;
+        -:  264:
+        -:  265:
+    #####:  266:  optr = obfr;
+        -:  267:
+        -:  268:  /* matrix coefficients */
+    #####:  269:  crv = Inverse_Table_6_9[matrix_coefficients][0];
+    #####:  270:  cbu = Inverse_Table_6_9[matrix_coefficients][1];
+    #####:  271:  cgu = Inverse_Table_6_9[matrix_coefficients][2];
+    #####:  272:  cgv = Inverse_Table_6_9[matrix_coefficients][3];
+        -:  273:
+    #####:  274:  for (i=0; i<height; i++)
+        -:  275:  {
+    #####:  276:    py = src[0] + offset + incr*i;
+    #####:  277:    pu = u444 + offset + incr*i;
+    #####:  278:    pv = v444 + offset + incr*i;
+        -:  279:
+    #####:  280:    for (j=0; j<horizontal_size; j++)
+        -:  281:    {
+    #####:  282:      u = *pu++ - 128;
+    #####:  283:      v = *pv++ - 128;
+    #####:  284:      y = 76309 * (*py++ - 16); /* (255/219)*65536 */
+        -:  285:      convYuvToRgb(y, u, v, crv, cbu, cgu, cgv, &r, &g, &b);
+        -:  286:      // r = Clip[(y + crv*v + 32768)>>16];
+        -:  287:      // g = Clip[(y - cgu*u - cgv*v + 32768)>>16];
+        -:  288:      // b = Clip[(y + cbu*u + 32786)>>16];
+        -:  289:
+        -:  290:      // Writing to framebuffer
+    #####:  291:      location = (j + vinfo.xoffset) * (vinfo.bits_per_pixel/8) +
+    #####:  292:                  (i + vinfo.yoffset) * finfo.line_length;
+        -:  293:
+    #####:  294:      vinfo.yres = height;
+        -:  295:
+    #####:  296:      if (vinfo.bits_per_pixel == 32) {
+    #####:  297:          *(fbp + location + 0) = b;
+    #####:  298:          *(fbp + location + 1) = g;
+    #####:  299:          *(fbp + location + 2) = r;
+    #####:  300:          *(fbp + location + 3) = 255;
+        -:  301:      } else { // assume 16
+    #####:  302:          *(fbp + location + 0) = ((g << 3) & 0b11100000) | (b >> 3);
+    #####:  303:          *(fbp + location + 1) = (r & 0b11111000 ) | (g >> 5);
+        -:  304:      }
+        -:  305:
+        -:  306:    }
+        -:  307:  } 
+        -:  308:
+    #####:  309:  if (ioctl (fbfd, FBIOPAN_DISPLAY, &vinfo) == -1) {
+        -:  310:    sprintf(Error_Text,"Could not set offset in framebuffer-information\n");
+    #####:  311:    Error(Error_Text);
+        -:  312:  }
+        -:  313:
+        -:  314:  // usleep(40000);
+        -:  315:
+        -:  316:  // if (ioctl(fbfd, FBIOPUT_VSCREENINFO, &vinfo_bak) == -1) {
+        -:  317:  //   sprintf(Error_Text,"Could not reset variable framebuffer-information");
+        -:  318:  //   Error(Error_Text);
+        -:  319:  // }
+    #####:  320:}
+        -:  321:
+        -:  322:/*
+        -:  323:* Function by nd359: Converting from planar YUV444 to RGB
+        -:  324:* - Using method from existing implementation
+        -:  325:*/
+        -:  326:static void convYuvToRgb(y,u,v,crv,cbu,cgu,cgv,r,g,b)
+        -:  327:int y, u, v, crv, cbu, cgu, cgv;
+        -:  328:unsigned char *r, *g, *b;
+        -:  329:{
+    #####:  330:  *r = Clip[(y + crv*v + 32768)>>16];
+    #####:  331:  *g = Clip[(y - cgu*u - cgv*v + 32768)>>16];
+    #####:  332:  *b = Clip[(y + cbu*u + 32786)>>16];
+        -:  333:}
+        -:  334:
+        -:  335:/*
+        -:  336:* Function by nd359: Converting from planar YUV444 to RGB
+        -:  337:* - Using method from existing implementation
+        -:  338:*/
+        -:  339:static void convYuvToRgb_simple(y,u,v,r,g,b)
+        -:  340:int y, u, v;
+        -:  341:unsigned char *r, *g, *b;
+        -:  342:{
+        -:  343:  int c,d,e;
+        -:  344:  c = 298 * (y - 16);
+        -:  345:  d = u - 128;
+        -:  346:  e = v - 128;
+        -:  347:
+        -:  348:  *r = Clip[(c + 409 * (e) + 128) >> 8];
+        -:  349:  *g = Clip[(c - 100 * (d) - 208 * (e) + 128) >> 8];
+        -:  350:  *b = Clip [(c + 516 * (d) + 128) >> 8];
+        -:  351:}
+        -:  352:
+        -:  353:/*
+        -:  354:* Function by nd359: Converting from packed YUV444 to RGB
+        -:  355:* - Using method from wikipedia
+        -:  356:*/
+        -:  357:static void convYuvToRgb_packed(p,r,g,b)
+        -:  358:unsigned char *p;
+        -:  359:int *r,*g,*b;
+        -:  360:{
+        -:  361:  unsigned char y, u, v;
+        -:  362:  int c, d, e;
+        -:  363:
+        -:  364:  y = p[0];
+        -:  365:  u = p[1];
+        -:  366:  v = p[2];
+        -:  367:
+        -:  368:  c = 298 * (y - 16);
+        -:  369:  d = u - 128;
+        -:  370:  e = v - 128;
+        -:  371:
+        -:  372:
+        -:  373:  *r = Clip[(c + 409 * (e) + 128) >> 8];
+        -:  374:  *g = Clip[(c - 100 * (d) - 208 * (e) + 128) >> 8];
+        -:  375:  *b = Clip [(c + 516 * (d) + 128) >> 8];
+        -:  376:}
+        -:  377:
+        -:  378:
+        -:  379:/* separate headerless files for y, u and v */
+        6:  380:static void store_yuv(outname,src,offset,incr,height)
+        -:  381:char *outname;
+        -:  382:unsigned char *src[];
+        -:  383:int offset,incr,height;
+        -:  384:{
+        -:  385:  int hsize;
+        -:  386:  char tmpname[FILENAME_LENGTH];
+        -:  387:
+        6:  388:  hsize = horizontal_size;
+        -:  389:
+        -:  390:  sprintf(tmpname,"%s.Y",outname);
+        6:  391:  store_yuv1(tmpname,src[0],offset,incr,hsize,height);
+        -:  392:
+        6:  393:  if (chroma_format!=CHROMA444)
+        -:  394:  {
+        6:  395:    offset>>=1; incr>>=1; hsize>>=1;
+        -:  396:  }
+        -:  397:
+        6:  398:  if (chroma_format==CHROMA420)
+        -:  399:  {
+        6:  400:    height>>=1;
+        -:  401:  }
+        -:  402:
+        -:  403:  sprintf(tmpname,"%s.U",outname);
+        6:  404:  store_yuv1(tmpname,src[1],offset,incr,hsize,height);
+        -:  405:
+        -:  406:  sprintf(tmpname,"%s.V",outname);
+        6:  407:  store_yuv1(tmpname,src[2],offset,incr,hsize,height);
+        6:  408:}
+        -:  409:
+        -:  410:/* auxiliary routine */
+       18:  411:static void store_yuv1(name,src,offset,incr,width,height)
+        -:  412:char *name;
+        -:  413:unsigned char *src;
+        -:  414:int offset,incr,width,height;
+        -:  415:{
+        -:  416:  int i, j;
+        -:  417:  unsigned char *p;
+        -:  418:
+       18:  419:  if (!Quiet_Flag)
+       18:  420:    fprintf(stderr,"saving %s\n",name);
+        -:  421:
+       18:  422:  if ((outfile = open(name,O_CREAT|O_TRUNC|O_WRONLY|O_BINARY,0666))==-1)
+        -:  423:  {
+        -:  424:    sprintf(Error_Text,"Couldn't create %s\n",name);
+    #####:  425:    Error(Error_Text);
+        -:  426:  }
+        -:  427:
+       18:  428:  optr=obfr;
+        -:  429:
+     1554:  430:  for (i=0; i<height; i++)
+        -:  431:  {
+     1536:  432:    p = src + offset + incr*i;
+   148992:  433:    for (j=0; j<width; j++)
+   147456:  434:      putbyte(*p++);
+        -:  435:  }
+        -:  436:
+       18:  437:  if (optr!=obfr)
+    #####:  438:    write(outfile,obfr,optr-obfr);
+        -:  439:
+       18:  440:  close(outfile);
+       18:  441:}
+        -:  442:
+        -:  443:/*
+        -:  444: * store as headerless file in U,Y,V,Y format
+        -:  445: */
+    #####:  446:static void store_sif (outname,src,offset,incr,height)
+        -:  447:char *outname;
+        -:  448:unsigned char *src[];
+        -:  449:int offset, incr, height;
+        -:  450:{
+        -:  451:  int i,j;
+        -:  452:  unsigned char *py, *pu, *pv;
+        -:  453:  static unsigned char *u422, *v422;
+        -:  454:
+    #####:  455:  if (chroma_format==CHROMA444)
+    #####:  456:    Error("4:4:4 not supported for SIF format");
+        -:  457:
+    #####:  458:  if (chroma_format==CHROMA422)
+        -:  459:  {
+    #####:  460:    u422 = src[1];
+    #####:  461:    v422 = src[2];
+        -:  462:  }
+        -:  463:  else
+        -:  464:  {
+    #####:  465:    if (!u422)
+        -:  466:    {
+    #####:  467:      if (!(u422 = (unsigned char *)malloc((Coded_Picture_Width>>1)
+    #####:  468:                                           *Coded_Picture_Height)))
+    #####:  469:        Error("malloc failed");
+    #####:  470:      if (!(v422 = (unsigned char *)malloc((Coded_Picture_Width>>1)
+    #####:  471:                                           *Coded_Picture_Height)))
+    #####:  472:        Error("malloc failed");
+        -:  473:    }
+        -:  474:  
+    #####:  475:    conv420to422_noninterp(src[1],u422);
+    #####:  476:    conv420to422_noninterp(src[2],v422);
+        -:  477:  }
+        -:  478:
+        -:  479:  strcat(outname,".SIF");
+        -:  480:
+    #####:  481:  if (!Quiet_Flag)
+    #####:  482:    fprintf(stderr,"saving %s\n",outname);
+        -:  483:
+    #####:  484:  if ((outfile = open(outname,O_CREAT|O_TRUNC|O_WRONLY|O_BINARY,0666))==-1)
+        -:  485:  {
+        -:  486:    sprintf(Error_Text,"Couldn't create %s\n",outname);
+    #####:  487:    Error(Error_Text);
+        -:  488:  }
+        -:  489:
+    #####:  490:  optr = obfr;
+        -:  491:
+    #####:  492:  for (i=0; i<height; i++)
+        -:  493:  {
+    #####:  494:    py = src[0] + offset + incr*i;
+    #####:  495:    pu = u422 + (offset>>1) + (incr>>1)*i;
+    #####:  496:    pv = v422 + (offset>>1) + (incr>>1)*i;
+        -:  497:
+    #####:  498:    for (j=0; j<horizontal_size; j+=2)
+        -:  499:    {
+    #####:  500:      putbyte(*pu++);
+    #####:  501:      putbyte(*py++);
+    #####:  502:      putbyte(*pv++);
+    #####:  503:      putbyte(*py++);
+        -:  504:    }
+        -:  505:  }
+        -:  506:
+    #####:  507:  if (optr!=obfr)
+    #####:  508:    write(outfile,obfr,optr-obfr);
+        -:  509:
+    #####:  510:  close(outfile);
+    #####:  511:}
+        -:  512:
+        -:  513:/*
+        -:  514: * store as PPM (PBMPLUS) or uncompressed Truevision TGA ('Targa') file
+        -:  515: */
+    #####:  516:static void store_ppm_tga(outname,src,offset,incr,height,tgaflag)
+        -:  517:char *outname;
+        -:  518:unsigned char *src[];
+        -:  519:int offset, incr, height;
+        -:  520:int tgaflag;
+        -:  521:{
+        -:  522:  int i, j;
+        -:  523:  int y, u, v, r, g, b;
+        -:  524:  int crv, cbu, cgu, cgv;
+        -:  525:  unsigned char *py, *pu, *pv;
+        -:  526:  static unsigned char tga24[14] = {0,0,2,0,0,0,0, 0,0,0,0,0,24,32};
+        -:  527:  char header[FILENAME_LENGTH];
+        -:  528:  static unsigned char *u422, *v422, *u444, *v444;
+        -:  529:
+    #####:  530:  if (chroma_format==CHROMA444)
+        -:  531:  {
+    #####:  532:    u444 = src[1];
+    #####:  533:    v444 = src[2];
+        -:  534:  }
+        -:  535:  else
+        -:  536:  {
+    #####:  537:    if (!u444)
+        -:  538:    {
+    #####:  539:      if (chroma_format==CHROMA420)
+        -:  540:      {
+    #####:  541:        if (!(u422 = (unsigned char *)malloc((Coded_Picture_Width>>1)
+    #####:  542:                                             *Coded_Picture_Height)))
+    #####:  543:          Error("malloc failed");
+    #####:  544:        if (!(v422 = (unsigned char *)malloc((Coded_Picture_Width>>1)
+    #####:  545:                                             *Coded_Picture_Height)))
+    #####:  546:          Error("malloc failed");
+        -:  547:      }
+        -:  548:
+    #####:  549:      if (!(u444 = (unsigned char *)malloc(Coded_Picture_Width
+    #####:  550:                                           *Coded_Picture_Height)))
+    #####:  551:        Error("malloc failed");
+        -:  552:
+    #####:  553:      if (!(v444 = (unsigned char *)malloc(Coded_Picture_Width
+    #####:  554:                                           *Coded_Picture_Height)))
+    #####:  555:        Error("malloc failed");
+        -:  556:    }
+        -:  557:
+    #####:  558:    if (chroma_format==CHROMA420)
+        -:  559:    {
+    #####:  560:      conv420to422_noninterp(src[1],u422);
+    #####:  561:      conv420to422_noninterp(src[2],v422);
+    #####:  562:      conv422to444_noninterp(u422,u444);
+    #####:  563:      conv422to444_noninterp(v422,v444);
+        -:  564:    }
+        -:  565:    else
+        -:  566:    {
+    #####:  567:      conv422to444_noninterp(src[1],u444);
+    #####:  568:      conv422to444_noninterp(src[2],v444);
+        -:  569:    }
+        -:  570:  }
+        -:  571:
+    #####:  572:  strcat(outname,tgaflag ? ".tga" : ".ppm");
+        -:  573:
+    #####:  574:  if (!Quiet_Flag)
+    #####:  575:    fprintf(stderr,"saving %s\n",outname);
+        -:  576:
+    #####:  577:  if ((outfile = open(outname,O_CREAT|O_TRUNC|O_WRONLY|O_BINARY,0666))==-1)
+        -:  578:  {
+        -:  579:    sprintf(Error_Text,"Couldn't create %s\n",outname);
+    #####:  580:    Error(Error_Text);
+        -:  581:  }
+        -:  582:
+    #####:  583:  optr = obfr;
+        -:  584:
+    #####:  585:  if (tgaflag)
+        -:  586:  {
+        -:  587:    /* TGA header */
+    #####:  588:    for (i=0; i<12; i++)
+    #####:  589:      putbyte(tga24[i]);
+        -:  590:
+    #####:  591:    putword(horizontal_size); putword(height);
+    #####:  592:    putbyte(tga24[12]); putbyte(tga24[13]);
+        -:  593:  }
+        -:  594:  else
+        -:  595:  {
+        -:  596:    /* PPM header */
+    #####:  597:    sprintf(header,"P6\n%d %d\n255\n",horizontal_size,height);
+        -:  598:
+    #####:  599:    for (i=0; header[i]!=0; i++)
+    #####:  600:      putbyte(header[i]);
+        -:  601:  }
+        -:  602:
+        -:  603:  /* matrix coefficients */
+    #####:  604:  crv = Inverse_Table_6_9[matrix_coefficients][0];
+    #####:  605:  cbu = Inverse_Table_6_9[matrix_coefficients][1];
+    #####:  606:  cgu = Inverse_Table_6_9[matrix_coefficients][2];
+    #####:  607:  cgv = Inverse_Table_6_9[matrix_coefficients][3];
+        -:  608:  
+    #####:  609:  for (i=0; i<height; i++)
+        -:  610:  {
+    #####:  611:    py = src[0] + offset + incr*i;
+    #####:  612:    pu = u444 + offset + incr*i;
+    #####:  613:    pv = v444 + offset + incr*i;
+        -:  614:
+    #####:  615:    for (j=0; j<horizontal_size; j++)
+        -:  616:    {
+    #####:  617:      u = *pu++ - 128;
+    #####:  618:      v = *pv++ - 128;
+    #####:  619:      y = 76309 * (*py++ - 16); /* (255/219)*65536 */
+    #####:  620:      r = Clip[(y + crv*v + 32768)>>16];
+    #####:  621:      g = Clip[(y - cgu*u - cgv*v + 32768)>>16];
+    #####:  622:      b = Clip[(y + cbu*u + 32786)>>16];
+        -:  623:
+    #####:  624:      if (tgaflag)
+        -:  625:      {
+    #####:  626:        putbyte(b); putbyte(g); putbyte(r);
+        -:  627:      }
+        -:  628:      else
+        -:  629:      {
+    #####:  630:        putbyte(r); putbyte(g); putbyte(b);
+        -:  631:      }
+        -:  632:    }
+        -:  633:  }
+        -:  634:
+    #####:  635:  if (optr!=obfr)
+    #####:  636:    write(outfile,obfr,optr-obfr);
+        -:  637:
+    #####:  638:  close(outfile);
+    #####:  639:}
+        -:  640:
+   147456:  641:static void putbyte(c)
+        -:  642:int c;
+        -:  643:{
+   147456:  644:  *optr++ = c;
+        -:  645:
+   147456:  646:  if (optr == obfr+OBFRSIZE)
+        -:  647:  {
+       36:  648:    write(outfile,obfr,OBFRSIZE);
+       36:  649:    optr = obfr;
+        -:  650:  }
+   147456:  651:}
+        -:  652:
+        -:  653:static void putword(w)
+        -:  654:int w;
+        -:  655:{
+    #####:  656:  putbyte(w); putbyte(w>>8);
+        -:  657:}
+        -:  658:
+        -:  659:
+        -:  660:
+        -:  661:
+    #####:  662:static void conv422to444_noninterp(src,dst)
+        -:  663:unsigned char *src,*dst;
+        -:  664:{
+        -:  665:  int i, i2, w, j;
+    #####:  666:  w = Coded_Picture_Width>>1;
+        -:  667:
+    #####:  668:  for (j=0; j<Coded_Picture_Height; j++)
+        -:  669:  {
+    #####:  670:    for (i=0; i<w; i++)
+        -:  671:    {
+    #####:  672:      i2 = i*2;
+    #####:  673:      dst[i2] = src[i];
+        -:  674:
+        -:  675:      /* odd samples (21 -52 159 159 -52 21) */
+    #####:  676:      dst[i2+1] = src[i];
+        -:  677:    }
+    #####:  678:    src+= w;
+    #####:  679:    dst+= Coded_Picture_Width;
+        -:  680:  }
+    #####:  681:}
+        -:  682:
+        -:  683:
+        -:  684:/*
+        -:  685:* Planar format has all 2n Y's, followed by all n U's, followed by all n V's.
+        -:  686:* This is more compressable, but not useful for stream processing in hardware.
+        -:  687:* Therefore we convert to packed format, which has n groups of Y0, U, Y1, V.
+        -:  688:* (nicely fits in 32 bits as well, which means we can send groups 2 at a time 
+        -:  689:*  to the stream processor).
+        -:  690:*/
+        -:  691:static void planar422ToPacked422(src,dst)
+        -:  692:unsigned char *src[],*dst;
+        -:  693:{
+        -:  694:  int y=0, u=0, v=0, k=0;
+        -:  695:
+        -:  696:  while (u<Coded_Picture_Height*(Coded_Picture_Width >> 1))
+        -:  697:  {
+        -:  698:    dst[k++] = src[0][y++]; // Y0
+        -:  699:    dst[k++] = src[1][u++]; // U
+        -:  700:    dst[k++] = src[0][y++]; // Y1
+        -:  701:    dst[k++] = src[2][v++]; // V
+        -:  702:  }
+        -:  703:}
+        -:  704:
+        -:  705:/* horizontal 1:2 interpolation filter */
+        -:  706:// nd359: we're only doing MPEG-2 (so only need to do the top option)
+        -:  707:static void conv422to444(src,dst)
+        -:  708:unsigned char *src,*dst;
+        -:  709:{
+        -:  710:  int i, i2, w, j, im3, im2, im1, ip1, ip2, ip3;
+        -:  711:
+        -:  712:  w = Coded_Picture_Width>>1;
+        -:  713:
+        -:  714:  if (base.MPEG2_Flag)
+        -:  715:  {
+        -:  716:    for (j=0; j<Coded_Picture_Height; j++)
+        -:  717:    {
+        -:  718:      for (i=0; i<w; i++)
+        -:  719:      {
+        -:  720:        i2 = i<<1;
+        -:  721:        im2 = (i<2) ? 0 : i-2;
+        -:  722:        im1 = (i<1) ? 0 : i-1;
+        -:  723:        ip1 = (i<w-1) ? i+1 : w-1;
+        -:  724:        ip2 = (i<w-2) ? i+2 : w-1;
+        -:  725:        ip3 = (i<w-3) ? i+3 : w-1;
+        -:  726:
+        -:  727:        /* FIR filter coefficients (*256): 21 0 -52 0 159 256 159 0 -52 0 21 */
+        -:  728:        /* even samples (0 0 256 0 0) */
+        -:  729:        dst[i2] = src[i];
+        -:  730:
+        -:  731:        /* odd samples (21 -52 159 159 -52 21) */
+        -:  732:        dst[i2+1] = Clip[(int)(21*(src[im2]+src[ip3])
+        -:  733:                        -52*(src[im1]+src[ip2]) 
+        -:  734:                       +159*(src[i]+src[ip1])+128)>>8];
+        -:  735:      }
+        -:  736:      src+= w;
+        -:  737:      dst+= Coded_Picture_Width;
+        -:  738:    }
+        -:  739:  }
+        -:  740:  else
+        -:  741:  {
+        -:  742:    for (j=0; j<Coded_Picture_Height; j++)
+        -:  743:    {
+        -:  744:      for (i=0; i<w; i++)
+        -:  745:      {
+        -:  746:
+        -:  747:        i2 = i<<1;
+        -:  748:        im3 = (i<3) ? 0 : i-3;
+        -:  749:        im2 = (i<2) ? 0 : i-2;
+        -:  750:        im1 = (i<1) ? 0 : i-1;
+        -:  751:        ip1 = (i<w-1) ? i+1 : w-1;
+        -:  752:        ip2 = (i<w-2) ? i+2 : w-1;
+        -:  753:        ip3 = (i<w-3) ? i+3 : w-1;
+        -:  754:
+        -:  755:        /* FIR filter coefficients (*256): 5 -21 70 228 -37 11 */
+        -:  756:        dst[i2] =   Clip[(int)(  5*src[im3]
+        -:  757:                         -21*src[im2]
+        -:  758:                         +70*src[im1]
+        -:  759:                        +228*src[i]
+        -:  760:                         -37*src[ip1]
+        -:  761:                         +11*src[ip2]+128)>>8];
+        -:  762:
+        -:  763:       dst[i2+1] = Clip[(int)(  5*src[ip3]
+        -:  764:                         -21*src[ip2]
+        -:  765:                         +70*src[ip1]
+        -:  766:                        +228*src[i]
+        -:  767:                         -37*src[im1]
+        -:  768:                         +11*src[im2]+128)>>8];
+        -:  769:      }
+        -:  770:      src+= w;
+        -:  771:      dst+= Coded_Picture_Width;
+        -:  772:    }
+        -:  773:  }
+        -:  774:}
+        -:  775:
+    #####:  776:static void conv420to422_noninterp(src,dst)
+        -:  777:unsigned char *src, *dst;
+        -:  778:{
+        -:  779:  int w, h, i, j, j2;
+        -:  780:
+    #####:  781:  w = Coded_Picture_Width>>1;
+    #####:  782:  h = Coded_Picture_Height>>1;
+        -:  783:
+    #####:  784:  for (i=0; i<w; i++)
+        -:  785:  {
+    #####:  786:    for (j=0; j<h; j++)
+        -:  787:    {
+    #####:  788:      j2 = j << 1;
+    #####:  789:      dst[w*j2] = src[w*j];
+    #####:  790:      dst[w*(j2+1)] = src[w*j];
+        -:  791:    }
+    #####:  792:    src++;
+    #####:  793:    dst++;
+        -:  794:  }  
+    #####:  795:}
+        -:  796:
+        -:  797:/* vertical 1:2 interpolation filter */
+        -:  798:// nd359: seems to only use this function for progressive frames
+        -:  799:static void conv420to422(src,dst)
+        -:  800:unsigned char *src,*dst;
+        -:  801:{
+        -:  802:  int w, h, i, j, j2;
+        -:  803:  int jm6, jm5, jm4, jm3, jm2, jm1, jp1, jp2, jp3, jp4, jp5, jp6, jp7;
+        -:  804:
+        -:  805:  w = Coded_Picture_Width>>1;
+        -:  806:  h = Coded_Picture_Height>>1;
+        -:  807:
+        -:  808:
+        -:  809:  if (progressive_frame)
+        -:  810:  {
+        -:  811:    /* intra frame */
+        -:  812:    for (i=0; i<w; i++)
+        -:  813:    {
+        -:  814:      for (j=0; j<h; j++)
+        -:  815:      {
+        -:  816:        j2 = j<<1;
+        -:  817:        jm3 = (j<3) ? 0 : j-3;
+        -:  818:        jm2 = (j<2) ? 0 : j-2;
+        -:  819:        jm1 = (j<1) ? 0 : j-1;
+        -:  820:        jp1 = (j<h-1) ? j+1 : h-1;
+        -:  821:        jp2 = (j<h-2) ? j+2 : h-1;
+        -:  822:        jp3 = (j<h-3) ? j+3 : h-1;
+        -:  823:
+        -:  824:        /* FIR filter coefficients (*256): 5 -21 70 228 -37 11 */
+        -:  825:        /* New FIR filter coefficients (*256): 3 -16 67 227 -32 7 */
+        -:  826:        dst[w*j2] =     Clip[(int)(  3*src[w*jm3]
+        -:  827:                             -16*src[w*jm2]
+        -:  828:                             +67*src[w*jm1]
+        -:  829:                            +227*src[w*j]
+        -:  830:                             -32*src[w*jp1]
+        -:  831:                             +7*src[w*jp2]+128)>>8];
+        -:  832:
+        -:  833:        dst[w*(j2+1)] = Clip[(int)(  3*src[w*jp3]
+        -:  834:                             -16*src[w*jp2]
+        -:  835:                             +67*src[w*jp1]
+        -:  836:                            +227*src[w*j]
+        -:  837:                             -32*src[w*jm1]
+        -:  838:                             +7*src[w*jm2]+128)>>8];
+        -:  839:      }
+        -:  840:      src++;
+        -:  841:      dst++;
+        -:  842:    }
+        -:  843:  }
+        -:  844:  else
+        -:  845:  {
+        -:  846:    /* intra field */
+        -:  847:    for (i=0; i<w; i++)
+        -:  848:    {
+        -:  849:      for (j=0; j<h; j+=2)
+        -:  850:      {
+        -:  851:        j2 = j<<1;
+        -:  852:
+        -:  853:        /* top field */
+        -:  854:        jm6 = (j<6) ? 0 : j-6;
+        -:  855:        jm4 = (j<4) ? 0 : j-4;
+        -:  856:        jm2 = (j<2) ? 0 : j-2;
+        -:  857:        jp2 = (j<h-2) ? j+2 : h-2;
+        -:  858:        jp4 = (j<h-4) ? j+4 : h-2;
+        -:  859:        jp6 = (j<h-6) ? j+6 : h-2;
+        -:  860:
+        -:  861:        /* Polyphase FIR filter coefficients (*256): 2 -10 35 242 -18 5 */
+        -:  862:        /* New polyphase FIR filter coefficients (*256): 1 -7 30 248 -21 5 */
+        -:  863:        dst[w*j2] = Clip[(int)(  1*src[w*jm6]
+        -:  864:                         -7*src[w*jm4]
+        -:  865:                         +30*src[w*jm2]
+        -:  866:                        +248*src[w*j]
+        -:  867:                         -21*src[w*jp2]
+        -:  868:                          +5*src[w*jp4]+128)>>8];
+        -:  869:
+        -:  870:        /* Polyphase FIR filter coefficients (*256): 11 -38 192 113 -30 8 */
+        -:  871:        /* New polyphase FIR filter coefficients (*256):7 -35 194 110 -24 4 */
+        -:  872:        dst[w*(j2+2)] = Clip[(int)( 7*src[w*jm4]
+        -:  873:                             -35*src[w*jm2]
+        -:  874:                            +194*src[w*j]
+        -:  875:                            +110*src[w*jp2]
+        -:  876:                             -24*src[w*jp4]
+        -:  877:                              +4*src[w*jp6]+128)>>8];
+        -:  878:
+        -:  879:        /* bottom field */
+        -:  880:        jm5 = (j<5) ? 1 : j-5;
+        -:  881:        jm3 = (j<3) ? 1 : j-3;
+        -:  882:        jm1 = (j<1) ? 1 : j-1;
+        -:  883:        jp1 = (j<h-1) ? j+1 : h-1;
+        -:  884:        jp3 = (j<h-3) ? j+3 : h-1;
+        -:  885:        jp5 = (j<h-5) ? j+5 : h-1;
+        -:  886:        jp7 = (j<h-7) ? j+7 : h-1;
+        -:  887:
+        -:  888:        /* Polyphase FIR filter coefficients (*256): 11 -38 192 113 -30 8 */
+        -:  889:        /* New polyphase FIR filter coefficients (*256):7 -35 194 110 -24 4 */
+        -:  890:        dst[w*(j2+1)] = Clip[(int)( 7*src[w*jp5]
+        -:  891:                             -35*src[w*jp3]
+        -:  892:                            +194*src[w*jp1]
+        -:  893:                            +110*src[w*jm1]
+        -:  894:                             -24*src[w*jm3]
+        -:  895:                              +4*src[w*jm5]+128)>>8];
+        -:  896:
+        -:  897:        dst[w*(j2+3)] = Clip[(int)(  1*src[w*jp7]
+        -:  898:                             -7*src[w*jp5]
+        -:  899:                             +30*src[w*jp3]
+        -:  900:                            +248*src[w*jp1]
+        -:  901:                             -21*src[w*jm1]
+        -:  902:                              +5*src[w*jm3]+128)>>8];
+        -:  903:      }
+        -:  904:      src++;
+        -:  905:      dst++;
+        -:  906:    }
+        -:  907:  }
+        -:  908:}
