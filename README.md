@@ -6,8 +6,6 @@ The Travis Branch is maintained by Alistair Fisher.
 
 [![Build Status](https://travis-ci.org/ndavison21/lowrisc-mpeg2decode.svg?branch=travis)](https://travis-ci.org/ndavison21/lowrisc-mpeg2decode)
 
-[master] status: [![master build status](https://travis-ci.org/lowRISC/lowrisc-chip.svg?branch=master)](https://travis-ci.org/lowRISC/lowrisc-chip)
-
                           mpeg2encode / mpeg2decode
                           =========================
               MPEG-2 Encoder / Decoder, Version 1.2, July 19, 1996
