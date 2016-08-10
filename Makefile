@@ -56,7 +56,7 @@
 
 # When compiling for desktop
 CC = gcc
-CFLAGS = -O2 -Wno-unused-result
+CFLAGS = -O2 -Wno-unused-result -fprofile-arcs -ftest-coverage
 
 # When compiling for profiling:
 #  = gcc
