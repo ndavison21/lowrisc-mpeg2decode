@@ -1,8 +1,12 @@
 Modified by Nathanael Davison, nd359, for use with lowrisc architecture.
 - Main changes are in store.c
-- Other chanes are in mpeg2decode.c (mainly adding options)
+- Other changes are in mpeg2decode.c (mainly adding options)
 
+The Travis Branch is maintained by Alistair Fisher.
 
+Main Branch: [![Build Status](https://travis-ci.org/ndavison21/lowrisc-mpeg2decode.svg?branch=master)](https://travis-ci.org/ndavison21/lowrisc-mpeg2decode)
+
+Travis Branch: [![Build Status](https://travis-ci.org/ndavison21/lowrisc-mpeg2decode.svg?branch=travis)](https://travis-ci.org/ndavison21/lowrisc-mpeg2decode)
 
                           mpeg2encode / mpeg2decode
                           =========================
