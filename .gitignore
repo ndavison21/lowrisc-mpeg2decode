@@ -1,7 +1,3 @@
 *.o
-*.U
-*.Y
-*.v
-src/mpeg2enc
 doc
 par
