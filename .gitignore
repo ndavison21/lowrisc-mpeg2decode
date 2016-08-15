@@ -1,3 +1,7 @@
 *.o
-doc
-par
+*.doc
+*.par
+*.txt
+*.y
+*.u
+*.v
