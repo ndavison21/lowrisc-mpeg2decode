@@ -60,15 +60,18 @@ static void conv420to422 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv422to444 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv420to422_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv422to444_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
+static void conv422to444_packed _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void convPlanar422ToPacked422 _ANSI_ARGS_((unsigned char *src[], unsigned char *dst));
 static void convYuvToRgb _ANSI_ARGS_ ((int y, int u, int v, int crv, int cbu, int cgu, int cgv, unsigned char *r, unsigned char  *g, unsigned char  *b));
 static void convYuvToRgb_simple _ANSI_ARGS_ ((int y, int u, int v, unsigned char *r, unsigned char  *g, unsigned char  *b));
-static void convYuvToRgb_packed _ANSI_ARGS_ ((unsigned char *p, int *r, int *g, int *b));
+static void convYuvToRgb_packed _ANSI_ARGS_ ((unsigned char *p, unsigned char *r, unsigned char *g, unsigned char *b));
 
 #define OBFRSIZE 4096
 static unsigned char obfr[OBFRSIZE];
 static unsigned char *optr;
 static int outfile;
+
+#define PACKED 1
 
 /*
  * store a picture as either one frame or two fields
@@ -150,7 +153,7 @@ int offset, incr, height;
   int y, u, v, crv, cbu, cgu, cgv;
   unsigned char r, g, b, *py, *pu, *pv;
 
-  static unsigned char *u422, *v422, *u444, *v444;
+  static unsigned char *u422, *v422, *u444, *v444, *yuv422, *yuv444;
 
   if (chroma_format==CHROMA444)
   {
@@ -163,37 +166,45 @@ int offset, incr, height;
     {
       if (chroma_format==CHROMA420)
       {
-        if (!(u422 = (unsigned char *)malloc((Coded_Picture_Width>>1)
-                                             *Coded_Picture_Height)))
+        if (!(u422 = (unsigned char *)malloc((Coded_Picture_Width>>1)*Coded_Picture_Height)))
           Error("malloc failed");
-        if (!(v422 = (unsigned char *)malloc((Coded_Picture_Width>>1)
-                                             *Coded_Picture_Height)))
+        if (!(v422 = (unsigned char *)malloc((Coded_Picture_Width>>1)*Coded_Picture_Height)))
           Error("malloc failed");
       }
 
-      if (!(u444 = (unsigned char *)malloc(Coded_Picture_Width
-                                           *Coded_Picture_Height)))
-        Error("malloc failed");
+      if (!PACKED)
+      {
+        if (!(u444 = (unsigned char *)malloc(Coded_Picture_Width*Coded_Picture_Height)))
+          Error("malloc failed");
 
-      if (!(v444 = (unsigned char *)malloc(Coded_Picture_Width
-                                           *Coded_Picture_Height)))
-        Error("malloc failed");
+        if (!(v444 = (unsigned char *)malloc(Coded_Picture_Width*Coded_Picture_Height)))
+          Error("malloc failed");
+      }
     }
 
     if (chroma_format==CHROMA420)
     {
       conv420to422_noninterp(src[1],u422); // U data
       conv420to422_noninterp(src[2],v422); // V data
-      /* MUST INTERLEAVE YUV BEFORE SENDING TO STREAM PROCESSOR
-      *  Expected 422 format is:
-      *  -------------------------------------
-      *  |   Y0   |   U    |   Y1   |   V    |
-      *  -------------------------------------
-      *  | Byte 0 | Byte 1 | Byte 2 | Byte 3 |
-      *  -------------------------------------
-      */
-      conv422to444_noninterp(u422,u444);
-      conv422to444_noninterp(v422,v444);
+
+      if (PACKED)
+      {
+        unsigned char * yuv422_planar[3];
+        yuv422_planar[0] = src[0];
+        yuv422_planar[1] = u422;
+        yuv422_planar[2] = v422; 
+        if (!(yuv422 = (unsigned char *)malloc(4*(Coded_Picture_Width>>1)*Coded_Picture_Height)))
+          Error("malloc failed");
+        convPlanar422ToPacked422(src,yuv422);
+        if (!(yuv444 = (unsigned char *)malloc(4*Coded_Picture_Width*Coded_Picture_Height)))
+          Error("malloc failed");
+        conv422to444_packed(yuv422,yuv444);
+      }
+      else
+      {
+        conv422to444_noninterp(u422,u444);
+        conv422to444_noninterp(v422,v444);
+      }
     }
     else
     {
@@ -264,32 +275,30 @@ int offset, incr, height;
 
   optr = obfr;
 
-  /* matrix coefficients */
-  crv = Inverse_Table_6_9[matrix_coefficients][0];
-  cbu = Inverse_Table_6_9[matrix_coefficients][1];
-  cgu = Inverse_Table_6_9[matrix_coefficients][2];
-  cgv = Inverse_Table_6_9[matrix_coefficients][3];
-
   for (i=0; i<height; i++)
   {
-    py = src[0] + offset + incr*i;
-    pu = u444 + offset + incr*i;
-    pv = v444 + offset + incr*i;
+    if (!PACKED)
+    {
+      py = src[0] + offset + incr*i;
+      pu = u444 + offset + incr*i;
+      pv = v444 + offset + incr*i;
+    }
 
     for (j=0; j<horizontal_size; j++)
     {
-      // u = *pu++ - 128;
-      // v = *pv++ - 128;
-      // y = 76309 * (*py++ - 16); /* (255/219)*65536 */
-      // convYuvToRgb(y, u, v, crv, cbu, cgu, cgv, &r, &g, &b);
 
-      u = *pu++;
-      v = *pv++;
-      y = *py++;
-      convYuvToRgb_simple(y, u, v, &r, &g, &b);
-      // r = Clip[(y + crv*v + 32768)>>16];
-      // g = Clip[(y - cgu*u - cgv*v + 32768)>>16];
-      // b = Clip[(y + cbu*u + 32786)>>16];
+      if (!PACKED)
+      {
+        u = *pu++;
+        v = *pv++;
+        y = *py++;
+        convYuvToRgb_simple(y, u, v, &r, &g, &b);
+      }
+      else
+      {
+        convYuvToRgb_packed(yuv444, &r, &g, &b);
+        yuv444 += 4;
+      }
 
       // Writing to framebuffer
       location = (j + vinfo.xoffset) * (vinfo.bits_per_pixel/8) +
@@ -305,17 +314,13 @@ int offset, incr, height;
       } else { // assume 16
           *(fbp + location + 0) = ((g << 3) & 0b11100000) | (b >> 3);
           *(fbp + location + 1) = (r & 0b11111000 ) | (g >> 5);
-      }
-
-    }
+      }    }
   } 
 
   if (ioctl (fbfd, FBIOPAN_DISPLAY, &vinfo) == -1) {
     sprintf(Error_Text,"Could not set offset in framebuffer-information\n");
     Error(Error_Text);
   }
-
-  // usleep(40000);
 
   // if (ioctl(fbfd, FBIOPUT_VSCREENINFO, &vinfo_bak) == -1) {
   //   sprintf(Error_Text,"Could not reset variable framebuffer-information");
@@ -324,8 +329,8 @@ int offset, incr, height;
 }
 
 /*
-* Function by nd359: Converting from planar YUV444 to RGB
-* - Using method from existing implementation
+ * Function by nd359: Converting from planar YUV444 to RGB
+ * - Using method from existing implementation
 */
 static void convYuvToRgb(y,u,v,crv,cbu,cgu,cgv,r,g,b)
 int y, u, v, crv, cbu, cgu, cgv;
@@ -337,8 +342,8 @@ unsigned char *r, *g, *b;
 }
 
 /*
-* Function by nd359: Converting from planar YUV444 to RGB
-* - Using method from existing implementation
+ * Function by nd359: Converting from planar YUV444 to RGB
+ * - Using method from existing implementation
 */
 static void convYuvToRgb_simple(y,u,v,r,g,b)
 int y, u, v;
@@ -353,21 +358,23 @@ unsigned char *r, *g, *b;
   *g = Clip[(c - 100 * d - 208 * e + 128) >> 8];
   *b = Clip[(c + 516 * d + 128) >> 8];
 
+  printf("yuv: (%u,%u,%u)\n", y, u, v);
+  // printf("rgb: (%u,%u,%u)\n", *r, *g, *b);
 }
 
 /*
-* Function by nd359: Converting from packed YUV444 to RGB
-* - Using method from wikipedia
+ * Function by nd359: Converting from packed YUV444 to RGB
+ * - Using method from wikipedia
 */
 static void convYuvToRgb_packed(p,r,g,b)
 unsigned char *p;
-int *r,*g,*b;
+unsigned char *r,*g,*b;
 {
   unsigned char y, u, v;
   int c, d, e;
 
-  y = p[0];
-  u = p[1];
+  u = p[0];
+  y = p[1];
   v = p[2];
 
   c = 298 * (y - 16);
@@ -378,6 +385,9 @@ int *r,*g,*b;
   *r = Clip[(c + 409 * (e) + 128) >> 8];
   *g = Clip[(c - 100 * (d) - 208 * (e) + 128) >> 8];
   *b = Clip [(c + 516 * (d) + 128) >> 8];
+
+  printf("yuv: (%u,%u,%u)\n", y, u, v);
+  //printf("rgb: (%u,%u,%u)\n", *r, *g, *b);
 }
 
 
@@ -517,7 +527,7 @@ int offset, incr, height;
 
 /*
  * store as PPM (PBMPLUS) or uncompressed Truevision TGA ('Targa') file
- */
+*/
 static void store_ppm_tga(outname,src,offset,incr,height,tgaflag)
 char *outname;
 unsigned char *src[];
@@ -662,8 +672,6 @@ int w;
 }
 
 
-
-
 static void conv422to444_noninterp(src,dst)
 unsigned char *src,*dst;
 {
@@ -685,21 +693,40 @@ unsigned char *src,*dst;
   }
 }
 
+static void conv422to444_packed(src,dst)
+unsigned char *src,*dst;
+{
+  int i=0;
+  while(i<4*Coded_Picture_Height*Coded_Picture_Width)
+  {
+    dst[i++] = src[1]; // U
+    dst[i++] = src[0]; // Y0
+    dst[i++] = src[3]; // V
+    dst[i++] = 0;
+
+    dst[i++] = src[1]; // U
+    dst[i++] = src[2]; // Y1
+    dst[i++] = src[3]; // V
+    dst[i++] = 0;
+  }
+}
+
 
 /*
-* Planar format has all 2n Y's, followed by all n U's, followed by all n V's.
-* This is more compressable, but not useful for stream processing in hardware.
-* Therefore we convert to packed format, which has n groups of Y0, U, Y1, V.
-* (nicely fits in 32 bits as well, which means we can send groups 2 at a time 
-*  to the stream processor).
+ * Planar format has all 2n Y's, followed by all n U's, followed by all n V's.
+ * This is more compressable, but not useful for stream processing in hardware.
+ * Therefore we convert to packed format, which has n groups of Y0, U, Y1, V.
+ * (nicely fits in 32 bits as well, which means we can send groups 2 at a time 
+ *  to the stream processor).
 */
 static void convPlanar422ToPacked422(src,dst)
 unsigned char *src[],*dst;
 {
   int y=0, u=0, v=0, k=0;
 
-  while (u<Coded_Picture_Height*(Coded_Picture_Width >> 1))
+  while (k<4*Coded_Picture_Height*(Coded_Picture_Width>>1))
   {
+    printf("YUYV: %u,%u,%u,%u\n", src[0][y], src[1][u], src[0][y+1], src[2][v]);
     dst[k++] = src[0][y++]; // Y0
     dst[k++] = src[1][u++]; // U
     dst[k++] = src[0][y++]; // Y1
@@ -708,7 +735,6 @@ unsigned char *src[],*dst;
 }
 
 /* horizontal 1:2 interpolation filter */
-// nd359: we're only doing MPEG-2 (so only need to do the top option)
 static void conv422to444(src,dst)
 unsigned char *src,*dst;
 {
@@ -778,29 +804,7 @@ unsigned char *src,*dst;
   }
 }
 
-static void conv420to422_noninterp(src,dst)
-unsigned char *src, *dst;
-{
-  int w, h, i, j, j2;
-
-  w = Coded_Picture_Width>>1;
-  h = Coded_Picture_Height>>1;
-
-  for (i=0; i<w; i++)
-  {
-    for (j=0; j<h; j++)
-    {
-      j2 = j << 1;
-      dst[w*j2] = src[w*j];
-      dst[w*(j2+1)] = src[w*j];
-    }
-    src++;
-    dst++;
-  }  
-}
-
 /* vertical 1:2 interpolation filter */
-// nd359: seems to only use this function for progressive frames
 static void conv420to422(src,dst)
 unsigned char *src,*dst;
 {
@@ -910,4 +914,28 @@ unsigned char *src,*dst;
       dst++;
     }
   }
+}
+
+/*
+ * Planar to planar
+*/
+static void conv420to422_noninterp(src,dst)
+unsigned char *src, *dst;
+{
+  int w, h, i, j, j2;
+
+  w = Coded_Picture_Width>>1;
+  h = Coded_Picture_Height>>1;
+
+  for (i=0; i<w; i++)
+  {
+    for (j=0; j<h; j++)
+    {
+      j2 = j << 1;
+      dst[w*j2] = src[w*j];
+      dst[w*(j2+1)] = src[w*j];
+    }
+    src++;
+    dst++;
+  }  
 }
