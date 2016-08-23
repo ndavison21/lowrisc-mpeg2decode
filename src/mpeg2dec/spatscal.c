@@ -95,7 +95,7 @@ static void Read_Lower_Layer_Component_Framewise(comp,lw,lh)
 #ifdef VERBOSE
   if (Verbose_Flag>1)
     printf("reading %s\n",fname);
-#endif VERBOSE
+#endif /* VERBOSE */
   fd=fopen(fname,"rb");
   if (fd==NULL) exit(-1);
   for (j=0; j<lh; j++) {
@@ -126,7 +126,7 @@ static void Read_Lower_Layer_Component_Fieldwise(comp,lw,lh)
 #ifdef VERBOSE
   if (Verbose_Flag>1)
     printf("reading %s\n",fname);
-#endif VERBOSE
+#endif /* VERBOSE */
   fd=fopen(fname,"rb");
   if (fd==NULL) exit(-1);
   for (j=0; j<lh; j+=lower_layer_progressive_frame?1:2)
@@ -140,7 +140,7 @@ static void Read_Lower_Layer_Component_Fieldwise(comp,lw,lh)
 #ifdef VERBOSE
     if (Verbose_Flag>1)
       printf("reading %s\n",fname);
-#endif VERBOSE
+#endif /* VERBOSE */
     fd=fopen(fname,"rb");
     if (fd==NULL) exit(-1);
     for (j=1; j<lh; j+=2)

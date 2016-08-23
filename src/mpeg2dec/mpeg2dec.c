@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #define GLOBAL
 #include "config.h"
@@ -264,7 +265,7 @@ static void Initialize_Sequence()
 void Error(text)
 char *text;
 {
-  fprintf(stderr,text);
+  fprintf(stderr, "%s", text);
   exit(1);
 }
 

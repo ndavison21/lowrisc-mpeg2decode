@@ -56,7 +56,7 @@
 
 # When compiling for desktop
 CC = gcc
-CFLAGS = -Og -g -Wno-unused-result
+CFLAGS = -O2 -Wno-unused-result
 
 # When compiling for profiling:
 #  = gcc

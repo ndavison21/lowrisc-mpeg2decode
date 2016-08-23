@@ -347,7 +347,7 @@ static int Get_SNR_macroblock_type()
 #ifdef TRACE			/* *CH* */
   if (Trace_Flag)
     printf("macroblock_type(SNR) (");
-#endif TRACE
+#endif /* TRACE */
 
   code = Show_Bits(3);
 
@@ -367,7 +367,7 @@ static int Get_SNR_macroblock_type()
     Print_Bits(code,3,SNRMBtab[code].len);
     printf("): %s (%d)\n",MBdescr[(int)SNRMBtab[code].val],SNRMBtab[code].val);
   }
-#endif TRACE
+#endif /* TRACE */
 
 
   return SNRMBtab[code].val;
