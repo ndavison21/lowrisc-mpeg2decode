@@ -40,7 +40,7 @@ module yuv422to444_tb;
    nasti_stream_mover # (
       .ADDR_WIDTH(64),
       .DATA_WIDTH(64),
-      .MAX_BURST_LENGTH(8)
+      .MAX_BURST_LENGTH(16)
    ) dm_data_to_local (
       .aclk(clk),
       .aresetn(aresetn),
@@ -55,7 +55,7 @@ module yuv422to444_tb;
    stream_nasti_mover# (
       .ADDR_WIDTH(64),
       .DATA_WIDTH(64),
-      .MAX_BURST_LENGTH(6)
+      .MAX_BURST_LENGTH(16)
    ) dm_data_from_local (
       .aclk(clk),
       .aresetn(aresetn),
@@ -90,42 +90,43 @@ module yuv422to444_tb;
    always_ff @(posedge clk or posedge rst)
    begin
        if (rst) begin
-          read_memory[0]  <= 1 + (2<<8) + ( 4<<16) + ( 8<<24) + (16<<32) + (32<<40) + (64<<48) + (128<<54);
-          read_memory[1]  <= 3 + (6<<8) + (12<<16) + (24<<24) + (48<<32) + (96<<40) + (192<<48) + (129<<54);
-          read_memory[2]  <= 1 + (2<<8) + (4<<16) + (8<<24) + (16<<32) + (32<<40) + (64<<48) + (128<<54);
-          read_memory[3]  <= 3 + (6<<8) + (12<<16) + (24<<24) + (48<<32) + (96<<40) + (192<<48) + (129<<54);
-          read_memory[4]  <= 1 + (2<<8) + (4<<16) + (8<<24) + (16<<32) + (32<<40) + (64<<48) + (128<<54);
-          read_memory[5]  <= 3 + (6<<8) + (12<<16) + (24<<24) + (48<<32) + (96<<40) + (192<<48) + (129<<54);
-          read_memory[6]  <= 1 + (2<<8) + (4<<16) + (8<<24) + (16<<32) + (32<<40) + (64<<48) + (128<<54);
-          read_memory[7]  <= 3 + (6<<8) + (12<<16) + (24<<24) + (48<<32) + (96<<40) + (192<<48) + (129<<54);
-          read_memory[8]  <= 1 + (2<<8) + (4<<16) + (8<<24) + (16<<32) + (32<<40) + (64<<48) + (128<<54);
-          read_memory[9]  <= 3 + (6<<8) + (12<<16) + (24<<24) + (48<<32) + (96<<40) + (192<<48) + (129<<54);
-          read_memory[10] <= 1 + (2<<8) + (4<<16) + (8<<24) + (16<<32) + (32<<40) + (64<<48) + (128<<54);
-          read_memory[11] <= 3 + (6<<8) + (12<<16) + (24<<24) + (48<<32) + (96<<40) + (192<<48) + (129<<54);
-          read_memory[12] <= 1 + (2<<8) + (4<<16) + (8<<24) + (16<<32) + (32<<40) + (64<<48) + (128<<54);
-          read_memory[13] <= 3 + (6<<8) + (12<<16) + (24<<24) + (48<<32) + (96<<40) + (192<<48) + (129<<54);
-          read_memory[14] <= 1 + (2<<8) + (4<<16) + (8<<24) + (16<<32) + (32<<40) + (64<<48) + (128<<54);
-          read_memory[15] <= 3 + (6<<8) + (12<<16) + (24<<24) + (48<<32) + (96<<40) + (192<<48) + (129<<54);
+          read_memory[0]  <= 64'h8fdb4ad5d652c633;
+          read_memory[1]  <= 64'h6cab66d9bffe01bd;
+          read_memory[2]  <= 64'he7858fc0ff08f21f;
+          read_memory[3]  <= 64'h33cac1fba5688d7a;
+          read_memory[4]  <= 64'h66a3d75871929692;
+          read_memory[5]  <= 64'h576de545cee7321e;
+          read_memory[6]  <= 64'h0d3eae1011fa7a43;
+          read_memory[7]  <= 64'hb02cb0c0a6ff6c33;
+          read_memory[8]  <= 64'h439141237a7c2f28;
+          read_memory[9]  <= 64'hb00d91fdc3c25ec8;
+          read_memory[10] <= 64'h0f57955cc4f8a73b;
+          read_memory[11] <= 64'h86d3d93320bc2414;
+          read_memory[12] <= 64'hbdce6f1287b9400b;
+          read_memory[13] <= 64'h512d2242ce2023a6;
+          read_memory[14] <= 64'h5aa30eaa5c1ea929;
+          read_memory[15] <= 64'h564ff1558d3c6544;
        end else
        begin
-          if (br_en)
+          if (br_en && !(|br_we))
           begin
-             $display("MEM_READ: Y0: %d, U: %d, Y1: %d, V: %d, Y0: %d, U: %d, Y1: %d, V: %d", 
-                br_rddata[ 7: 0], 
-                br_rddata[15: 8], 
-                br_rddata[23:16], 
-                br_rddata[31:24],
-                br_rddata[39:32], 
-                br_rddata[47:40], 
-                br_rddata[55:48], 
-                br_rddata[63:56]);
+             $display("MEM_READ: Y0: %h, U: %h, Y1: %h, V: %h, Y0: %h, U: %h, Y1: %h, V: %h  @:", 
+                read_memory[br_addr>>3][ 7: 0], 
+                read_memory[br_addr>>3][15: 8], 
+                read_memory[br_addr>>3][23:16], 
+                read_memory[br_addr>>3][31:24],
+                read_memory[br_addr>>3][39:32], 
+                read_memory[br_addr>>3][47:40], 
+                read_memory[br_addr>>3][55:48], 
+                read_memory[br_addr>>3][63:56],
+                (br_addr>>3));
              br_rddata <= read_memory[br_addr>>3];
           end
           
           if (&br_we)
           begin
              write_memory[br_addr>>3] <= br_wrdata;
-             $display("MEM_WRITE: v: %d, u: %d, y0: %d, 0: %d, v: %d, u: %d, y1: %d, 0: %d", 
+             $display("MEM_WRITE: v: %h, u: %h, y0: %h, 0: %h, v: %h, u: %h, y1: %h, 0: %h  @:", 
                 br_wrdata[ 7: 0], 
                 br_wrdata[15: 8],
                 br_wrdata[23:16], 
@@ -133,14 +134,15 @@ module yuv422to444_tb;
                 br_wrdata[39:32], 
                 br_wrdata[47:40], 
                 br_wrdata[55:48], 
-                br_wrdata[63:56]);
+                br_wrdata[63:56],
+                (br_addr>>3));
           end
        end
    end
 
    yuv422to444_noninterp yuv422to444(
-      .clk(clk),
-      .rst(aresetn),
+      .aclk(clk),
+      .aresetn(aresetn),
       .src(chroma_in_ch),
       .dst(out_ch)
    );

@@ -61,22 +61,27 @@ static void conv422to444 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv420to422_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv422to444_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv422to444_packed _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
-static void conv422to444_accelerate _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
+static void conv422to444_accelerate _ANSI_ARGS_((unsigned char *src, unsigned char *dst, int size));
 static void convPlanar422ToPacked422 _ANSI_ARGS_((unsigned char *src[], unsigned char *dst));
 static void convYuvToRgb _ANSI_ARGS_ ((int y, int u, int v, int crv, int cbu, int cgu, int cgv, unsigned char *r, unsigned char  *g, unsigned char  *b));
 static void convYuvToRgb_simple _ANSI_ARGS_ ((int y, int u, int v, unsigned char *r, unsigned char  *g, unsigned char  *b));
 static void convYuvToRgb_packed _ANSI_ARGS_ ((unsigned char *p, unsigned char *r, unsigned char *g, unsigned char *b));
-static void convYuvToRgb_accelerate _ANSI_ARGS_ ((unsigned char *src, unsigned char *dst));
+static void convYuvToRgb_accelerate _ANSI_ARGS_ ((unsigned char *src, unsigned char *dst, int size));
 
 #define OBFRSIZE 4096
 
 #define PACKED 1
-#define ACCELERATE_YUV422TO444 1
-#define ACCELERATE_YUVTORGB 1
 
 static unsigned char obfr[OBFRSIZE];
 static unsigned char *optr;
 static int outfile;
+
+// Buffers for alignment in accelerator
+__attribute__((aligned(4096)))
+static char buffer_a[4096];
+
+__attribute__((aligned(4096)))
+static char buffer_b[4096];
 
 
 struct request {
@@ -90,7 +95,7 @@ struct request {
 /*
  * store a picture as either one frame or two fields
  */
-void Write_Frame(unsigned char *src[], int frame){
+void Write_Frame(unsigned char *src[], int frame) {
    char outname[FILENAME_LENGTH];
 
    if (progressive_sequence || progressive_frame || Frame_Store_Flag) {
@@ -146,7 +151,7 @@ static long int screensize = 0;
 static char *fbp = 0;
 
 /* function by nd359: Outputting straight to Framebuffer */
-static void display(unsigned char *src[], int offset, int incr, int height){
+static void display(unsigned char *src[], int offset, int incr, int height) {
    unsigned int i = 0, j = 0;
    long int location = 0;
 
@@ -155,13 +160,13 @@ static void display(unsigned char *src[], int offset, int incr, int height){
 
    static unsigned char *u422, *v422, *u444, *v444;
 
-   unsigned char *yuv422 = NULL, *yuv444 = NULL, *yuv422_planar[3], *rgb = NULL;
+   unsigned char *yuv422 = NULL, *yuv444 = NULL, *yuv422_planar[3];
 
-   if (!acc_initialized && (ACCELERATE_YUVTORGB || ACCELERATE_YUV422TO444)) {
+   if (!acc_initialized && (Acc_Type != ACC_NONE)) {
       acc_initialized = 1;
       if (accfd == -1) accfd = open("/dev/acc", O_RDWR);
 
-      if (fbfd == -1) {
+      if (accfd == -1) {
          Error("Couldn't open accelerator\n");
       }
    }
@@ -182,7 +187,7 @@ static void display(unsigned char *src[], int offset, int incr, int height){
 
       vinfo_bak = vinfo;
 
-      vinfo.bits_per_pixel = 32;
+      vinfo.bits_per_pixel = 16;
       vinfo.xres = horizontal_size;
       vinfo.xres_virtual = horizontal_size;
       vinfo.yres = height;
@@ -253,17 +258,18 @@ static void display(unsigned char *src[], int offset, int incr, int height){
          yuv422_planar[1] = u422;
          yuv422_planar[2] = v422;
 
-         if (!(yuv422 = (unsigned char *)malloc(4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height)))
+         if (!(yuv422 = (unsigned char *)aligned_alloc(64, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height)))
             Error("malloc failed");
          convPlanar422ToPacked422(yuv422_planar, yuv422);
 
-         if (!(yuv444 = (unsigned char *)malloc(4 * Coded_Picture_Width * Coded_Picture_Height)))
+         if (!(yuv444 = (unsigned char *)aligned_alloc(64, 4 * Coded_Picture_Width * Coded_Picture_Height)))
             Error("malloc failed");
 
-         if (ACCELERATE_YUV422TO444)
-            conv422to444_accelerate(yuv422, yuv444);
-         else
+         if (Acc_Type == ACC_YUV422TO444 || Acc_Type == ACC_ALL) {
+            conv422to444_accelerate(yuv422, yuv444, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height);
+         } else {
             conv422to444_packed(yuv422, yuv444);
+         }
       } else {
          exit(1);
       }
@@ -279,8 +285,8 @@ static void display(unsigned char *src[], int offset, int incr, int height){
 
    optr = obfr;
 
-   unsigned char* yuv444_working = yuv444;
-   if (!ACCELERATE_YUVTORGB) {
+   if (Acc_Type != ACC_YUV444TORGB && Acc_Type != ACC_ALL) {
+      unsigned char* yuv444_working = yuv444;
       for (i = 0; i < height; i++) {
          if (!PACKED) {
             py = src[0] + offset + incr * i;
@@ -316,10 +322,11 @@ static void display(unsigned char *src[], int offset, int incr, int height){
          }
       }
    } else {
-      if (!(rgb = (unsigned char *)malloc(4 * Coded_Picture_Width * Coded_Picture_Height)))
+      unsigned char* rgb = aligned_alloc(64, 4 * Coded_Picture_Width * Coded_Picture_Height);
+      if (rgb == NULL)
          Error("malloc failed");
 
-      convYuvToRgb_accelerate(yuv444_working, rgb);
+      convYuvToRgb_accelerate(yuv444, rgb, 4 * Coded_Picture_Width * Coded_Picture_Height);
 
       int k = 0;
       for (i = 0; i < height; i++) {
@@ -328,9 +335,10 @@ static void display(unsigned char *src[], int offset, int incr, int height){
             location = (j + vinfo.xoffset) * (vinfo.bits_per_pixel / 8) +
                        (i + vinfo.yoffset) * finfo.line_length;
 
-            r = rgb[k++];
-            g = rgb[k++];
             b = rgb[k++];
+            g = rgb[k++];
+            r = rgb[k++];
+            k++;
 
             if (vinfo.bits_per_pixel == 32) {
                *(fbp + location + 0) = b;
@@ -343,6 +351,8 @@ static void display(unsigned char *src[], int offset, int incr, int height){
             }
          }
       }
+
+      free(rgb);
    }
 
    if (ioctl (fbfd, FBIOPAN_DISPLAY, &vinfo) == -1) {
@@ -353,10 +363,6 @@ static void display(unsigned char *src[], int offset, int incr, int height){
    if (PACKED) {
       free(yuv422);
       free(yuv444);
-   }
-
-   if (ACCELERATE_YUVTORGB) {
-      free(rgb);
    }
 
    // if (ioctl(fbfd, FBIOPUT_VSCREENINFO, &vinfo_bak) == -1) {
@@ -424,11 +430,11 @@ unsigned char *r, *g, *b;
 
 }
 
-static void convYuvToRgb_accelerate(unsigned char *src, unsigned char *dst) {
+static void convYuvToRgb_accelerate(unsigned char *src, unsigned char *dst, int size) {
    struct request acc_req = {
       .src    = src,
       .dest   = dst,
-      .len    = 4 * Coded_Picture_Height * Coded_Picture_Width,
+      .len    = size,
       .opcode = 12,
       .attr   = 0
    };
@@ -717,11 +723,11 @@ unsigned char *src, *dst;
    }
 }
 
-static void conv422to444_accelerate(unsigned char *src, unsigned char *dst) {
+static void conv422to444_accelerate(unsigned char *src, unsigned char *dst, int size) {
    struct request acc_req = {
       .src    = src,
       .dest   = dst,
-      .len    = 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height,
+      .len    = size,
       .opcode = 11,
       .attr   = 0
    };

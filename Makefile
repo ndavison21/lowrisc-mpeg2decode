@@ -56,17 +56,22 @@
 
 # When compiling for desktop
 CC = gcc
-CFLAGS = -O2 -Wno-unused-result
+CFLAGS = -Og -g -Wno-unused-result
 
 # When compiling for profiling:
 #  = gcc
 # FLAGS = -O2 -pg -fno-inline
 
 # When compiling for FPGA:
-# CC = riscv64-unknown-linux-gnu-gcc
-# CFLAGS = -O2
+FPGA_CC = riscv64-unknown-linux-gnu-gcc
 
 all: mpeg2decode mpeg2encode
+
+mpeg2decode-fpga: 
+	cd src/mpeg2dec; make 'CC=$(FPGA_CC)' \
+	'CFLAGS=$(CFLAGS) $(USE_DISP) $(USE_SHMEM) $(INCLUDEDIR)' \
+	'LIBS=$(LIBS)' 'LIBRARYDIR=$(LIBRARYDIR)' 
+	cp src/mpeg2dec/mpeg2decode /home/nd359/Documents/lowrisc-intern/lowrisc-chip-debug/riscv-tools/ramfs-merge/
 
 mpeg2decode:
 	cd src/mpeg2dec; make 'CC=$(CC)' \

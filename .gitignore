@@ -9,6 +9,7 @@ out.txt
 mpeg2decode
 mpeg2encode
 chroma_project/
+chroma_project_2015/
 *.Y
 *.U
 *.V

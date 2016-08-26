@@ -243,6 +243,13 @@ EXTERN int Inverse_Table_6_9[8][4]
 EXTERN int Output_Type;
 EXTERN int hiQdither;
 
+/* accelerator types (Acc_Type) */
+#define ACC_NONE 0
+#define ACC_ALL 1
+#define ACC_YUV422TO444 2
+#define ACC_YUV444TORGB 3
+EXTERN int Acc_Type;
+
 /* decoder operation control flags */
 EXTERN int Quiet_Flag;
 EXTERN int Trace_Flag;
