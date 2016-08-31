@@ -119,6 +119,7 @@ void Spatial_Prediction _ANSI_ARGS_((void));
 
 /* store.c */
 void Write_Frame _ANSI_ARGS_((unsigned char *src[], int frame));
+struct timespec clock_diff(struct timespec start, struct timespec end);
 
 #ifdef DISPLAY
 /* display.c */
@@ -244,11 +245,10 @@ EXTERN int Output_Type;
 EXTERN int hiQdither;
 
 /* accelerator types (Acc_Type) */
-#define ACC_NONE 0
-#define ACC_ALL 1
-#define ACC_YUV422TO444 2
-#define ACC_YUV444TORGB 3
-EXTERN int Acc_Type;
+#define ACC_YUV422TO444 1
+#define ACC_YUV444TORGB 2
+#define ACC_RGB32TO16 4
+EXTERN int acc_type;
 
 /* decoder operation control flags */
 EXTERN int Quiet_Flag;

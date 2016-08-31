@@ -29,6 +29,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -41,6 +42,9 @@
 
 #include "config.h"
 #include "global.h"
+
+// define aligned_alloc(align, size) malloc(size)
+#define COLOR_DEPTH 16
 
 /* private prototypes */
 static void store_one _ANSI_ARGS_((char *outname, unsigned char *src[],
@@ -65,8 +69,11 @@ static void conv422to444_accelerate _ANSI_ARGS_((unsigned char *src, unsigned ch
 static void convPlanar422ToPacked422 _ANSI_ARGS_((unsigned char *src[], unsigned char *dst));
 static void convYuvToRgb _ANSI_ARGS_ ((int y, int u, int v, int crv, int cbu, int cgu, int cgv, unsigned char *r, unsigned char  *g, unsigned char  *b));
 static void convYuvToRgb_simple _ANSI_ARGS_ ((int y, int u, int v, unsigned char *r, unsigned char  *g, unsigned char  *b));
-static void convYuvToRgb_packed _ANSI_ARGS_ ((unsigned char *p, unsigned char *r, unsigned char *g, unsigned char *b));
-static void convYuvToRgb_accelerate _ANSI_ARGS_ ((unsigned char *src, unsigned char *dst, int size));
+
+static void convYuvToRgb_packed(unsigned char *src, unsigned char *dst, int size);
+static void convYuvToRgb_accelerate(unsigned char *src, unsigned char *dst, int size);
+
+static void convRgb32to16_accelerate(unsigned char *src, uint8_t *dst, int size);
 
 #define OBFRSIZE 4096
 
@@ -76,14 +83,6 @@ static unsigned char obfr[OBFRSIZE];
 static unsigned char *optr;
 static int outfile;
 
-// Buffers for alignment in accelerator
-__attribute__((aligned(4096)))
-static char buffer_a[4096];
-
-__attribute__((aligned(4096)))
-static char buffer_b[4096];
-
-
 struct request {
    void* src;
    void* dest;
@@ -91,6 +90,25 @@ struct request {
    int opcode;
    int attr;
 } acc_req;
+
+
+
+/*
+ * Debug
+*/
+struct timespec clock_diff(struct timespec start, struct timespec end) {
+   struct timespec temp;
+   if ((end.tv_nsec - start.tv_nsec) < 0) {
+      temp.tv_sec = end.tv_sec - start.tv_sec - 1;
+      temp.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
+   } else {
+      temp.tv_sec = end.tv_sec - start.tv_sec;
+      temp.tv_nsec = end.tv_nsec - start.tv_nsec;
+   }
+   return temp;
+}
+
+
 
 /*
  * store a picture as either one frame or two fields
@@ -152,8 +170,8 @@ static char *fbp = 0;
 
 /* function by nd359: Outputting straight to Framebuffer */
 static void display(unsigned char *src[], int offset, int incr, int height) {
+   struct timespec time1, time2;
    unsigned int i = 0, j = 0;
-   long int location = 0;
 
    int y, u, v, crv, cbu, cgu, cgv;
    unsigned char r, g, b, *py, *pu, *pv;
@@ -162,7 +180,7 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
 
    unsigned char *yuv422 = NULL, *yuv444 = NULL, *yuv422_planar[3];
 
-   if (!acc_initialized && (Acc_Type != ACC_NONE)) {
+   if (!acc_initialized && acc_type) {
       acc_initialized = 1;
       if (accfd == -1) accfd = open("/dev/acc", O_RDWR);
 
@@ -187,7 +205,7 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
 
       vinfo_bak = vinfo;
 
-      vinfo.bits_per_pixel = 16;
+      vinfo.bits_per_pixel = COLOR_DEPTH;
       vinfo.xres = horizontal_size;
       vinfo.xres_virtual = horizontal_size;
       vinfo.yres = height;
@@ -251,8 +269,11 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
          Error("malloc failed");
 
       if (chroma_format == CHROMA420) {
+         clock_gettime(CLOCK_REALTIME, &time1);
          conv420to422_noninterp(src[1], u422); // U data
          conv420to422_noninterp(src[2], v422); // V data
+         clock_gettime(CLOCK_REALTIME, &time2);
+         printf("420->422: %dns\n", clock_diff(time1, time2).tv_nsec);
 
          yuv422_planar[0] = src[0];
          yuv422_planar[1] = u422;
@@ -260,16 +281,22 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
 
          if (!(yuv422 = (unsigned char *)aligned_alloc(64, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height)))
             Error("malloc failed");
+         clock_gettime(CLOCK_REALTIME, &time1);
          convPlanar422ToPacked422(yuv422_planar, yuv422);
+         clock_gettime(CLOCK_REALTIME, &time2);
+         printf("Packing: %dns\n", clock_diff(time1, time2).tv_nsec);
 
          if (!(yuv444 = (unsigned char *)aligned_alloc(64, 4 * Coded_Picture_Width * Coded_Picture_Height)))
             Error("malloc failed");
 
-         if (Acc_Type == ACC_YUV422TO444 || Acc_Type == ACC_ALL) {
+         clock_gettime(CLOCK_REALTIME, &time1);
+         if (acc_type & ACC_YUV422TO444) {
             conv422to444_accelerate(yuv422, yuv444, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height);
          } else {
             conv422to444_packed(yuv422, yuv444);
          }
+         clock_gettime(CLOCK_REALTIME, &time2);
+         printf("422->444: %dns\n", clock_diff(time1, time2).tv_nsec);
       } else {
          exit(1);
       }
@@ -285,29 +312,22 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
 
    optr = obfr;
 
-   if (Acc_Type != ACC_YUV444TORGB && Acc_Type != ACC_ALL) {
+   if (!PACKED) {
       unsigned char* yuv444_working = yuv444;
       for (i = 0; i < height; i++) {
-         if (!PACKED) {
-            py = src[0] + offset + incr * i;
-            pu = u444 + offset + incr * i;
-            pv = v444 + offset + incr * i;
-         }
+         py = src[0] + offset + incr * i;
+         pu = u444 + offset + incr * i;
+         pv = v444 + offset + incr * i;
 
          for (j = 0; j < horizontal_size; j++) {
 
-            if (!PACKED) {
-               u = *pu++;
-               v = *pv++;
-               y = *py++;
-               convYuvToRgb_simple(y, u, v, &r, &g, &b);
-            } else {
-               convYuvToRgb_packed(yuv444_working, &r, &g, &b);
-               yuv444_working += 4;
-            }
+            u = *pu++;
+            v = *pv++;
+            y = *py++;
+            convYuvToRgb_simple(y, u, v, &r, &g, &b);
 
             // Writing to framebuffer
-            location = (j + vinfo.xoffset) * (vinfo.bits_per_pixel / 8) +
+            long int location = (j + vinfo.xoffset) * (vinfo.bits_per_pixel / 8) +
                        (i + vinfo.yoffset) * finfo.line_length;
 
             if (vinfo.bits_per_pixel == 32) {
@@ -326,33 +346,50 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
       if (rgb == NULL)
          Error("malloc failed");
 
-      convYuvToRgb_accelerate(yuv444, rgb, 4 * Coded_Picture_Width * Coded_Picture_Height);
+      clock_gettime(CLOCK_REALTIME, &time1);
+      if (acc_type & ACC_YUV444TORGB) {
+         convYuvToRgb_accelerate(yuv444, rgb, 4 * Coded_Picture_Width * Coded_Picture_Height);
+      } else {
+         convYuvToRgb_packed(yuv444, rgb, 4 * Coded_Picture_Width * Coded_Picture_Height);
+      }
+      clock_gettime(CLOCK_REALTIME, &time2);
+      printf("444->RGB: %dns\n", clock_diff(time1, time2).tv_nsec);
 
       int k = 0;
-      for (i = 0; i < height; i++) {
-         for (j = 0; j < horizontal_size; j++) {
-            // Writing to framebuffer
-            location = (j + vinfo.xoffset) * (vinfo.bits_per_pixel / 8) +
-                       (i + vinfo.yoffset) * finfo.line_length;
 
-            b = rgb[k++];
-            g = rgb[k++];
-            r = rgb[k++];
-            k++;
+      if (vinfo.bits_per_pixel != 32 && (acc_type & ACC_RGB32TO16)) {
+         uint8_t* rgb16 = aligned_alloc(64, 2 * Coded_Picture_Width * Coded_Picture_Height);
+         convRgb32to16_accelerate(rgb, rgb16, 4 * Coded_Picture_Width * Coded_Picture_Height);
 
-            if (vinfo.bits_per_pixel == 32) {
-               *(fbp + location + 0) = b;
-               *(fbp + location + 1) = g;
-               *(fbp + location + 2) = r;
-               *(fbp + location + 3) = 255;
-            } else { // assume 16
-               *(fbp + location + 0) = ((g << 3) & 0b11100000) | (b >> 3);
-               *(fbp + location + 1) = (r & 0b11111000 ) | (g >> 5);
+         for (i = 0; i < height; i++) {
+            memcpy(fbp + i * finfo.line_length, rgb16 + i * finfo.line_length, 2 * horizontal_size);
+         }
+      } else {
+         for (i = 0; i < height; i++) {
+            for (j = 0; j < horizontal_size; j++) {
+               // Writing to framebuffer
+               long int location = (j + vinfo.xoffset) * (vinfo.bits_per_pixel / 8) +
+                                   (i + vinfo.yoffset) * finfo.line_length;
+
+               b = rgb[k++];
+               g = rgb[k++];
+               r = rgb[k++];
+               k++;
+
+               if (vinfo.bits_per_pixel == 32) {
+                  *(fbp + location + 0) = b;
+                  *(fbp + location + 1) = g;
+                  *(fbp + location + 2) = r;
+                  *(fbp + location + 3) = 255;
+               } else { // assume 16
+                  *(fbp + location + 0) = ((g << 3) & 0b11100000) | (b >> 3);
+                  *(fbp + location + 1) = (r & 0b11111000 ) | (g >> 5);
+               }
             }
          }
-      }
 
-      free(rgb);
+         free(rgb);
+      }
    }
 
    if (ioctl (fbfd, FBIOPAN_DISPLAY, &vinfo) == -1) {
@@ -370,6 +407,29 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
    //   Error(Error_Text);
    // }
 }
+
+static void convRgb32to16_accelerate(unsigned char *src, uint8_t *dst, int size) {
+   struct request acc_req = {
+      .src    = src,
+      .dest   = dst,
+      .len    = size,
+      .opcode = 3,
+      .attr   = 0
+   };
+
+   if (ioctl(accfd, 1, &acc_req) == -1) {
+      Error("Unable to issue instruction to RGB32TO16 accelerator\n");
+   }
+
+   int status = 1;
+
+   while (status) {
+      if (ioctl(accfd, 0, &status) == -1) {
+         Error("Unable to query status of accelerator\n");
+      }
+   }
+}
+
 
 /*
  * Function by nd359: Converting from planar YUV444 to RGB
@@ -402,52 +462,55 @@ unsigned char *r, *g, *b;
    *b = Clip[(c + 516 * d + 128) >> 8];
 }
 
+__attribute__((always_inline))
+static unsigned char clamp(int v) {
+   if (v > 255) return 255;
+   if (v < 0)return 0;
+   return v;
+}
+
+
 /*
  * Function by nd359: Converting from packed YUV444 to RGB
  * - Using method from wikipedia
 */
-static void convYuvToRgb_packed(p, r, g, b)
-unsigned char *p;
-unsigned char *r, *g, *b;
-{
-   unsigned char y, u, v;
-   int c, d, e;
+static void convYuvToRgb_packed(unsigned char *src, unsigned char *dst, int size) {
+   int i;
+   for (i = 0; i < size; i += 4) {
+      unsigned char v = src[i + 0];
+      unsigned char u = src[i + 1];
+      unsigned char y = src[i + 2];
 
-   v = p[0];
-   u = p[1];
-   y = p[2];
+      int c = 298 * (y - 16);
+      int d = u - 128;
+      int e = v - 128;
 
-
-   c = 298 * (y - 16);
-   d = u - 128;
-   e = v - 128;
-
-
-   *r = Clip[(c + 409 * (e) + 128) >> 8];
-   *g = Clip[(c - 100 * (d) - 208 * (e) + 128) >> 8];
-   *b = Clip [(c + 516 * (d) + 128) >> 8];
-
+      dst[i + 2] = clamp((c + 409 * (e) + 128) >> 8);
+      dst[i + 1] = clamp((c - 100 * (d) - 208 * (e) + 128) >> 8);
+      dst[i + 0] = clamp((c + 516 * (d) + 128) >> 8);
+   }
 
 }
+
 
 static void convYuvToRgb_accelerate(unsigned char *src, unsigned char *dst, int size) {
    struct request acc_req = {
       .src    = src,
       .dest   = dst,
       .len    = size,
-      .opcode = 12,
+      .opcode = 2,
       .attr   = 0
    };
 
    if (ioctl(accfd, 1, &acc_req) == -1) {
-      Error("Unable to issue instruction to YUV444toRGB accelerator");
+      Error("Unable to issue instruction to YUV444toRGB accelerator\n");
    }
 
    int status = 1;
 
    while (status) {
       if (ioctl(accfd, 0, &status) == -1) {
-         Error("Unable to query status of accelerator");
+         Error("Unable to query status of accelerator\n");
       }
    }
 }
@@ -728,7 +791,7 @@ static void conv422to444_accelerate(unsigned char *src, unsigned char *dst, int 
       .src    = src,
       .dest   = dst,
       .len    = size,
-      .opcode = 11,
+      .opcode = 1,
       .attr   = 0
    };
 
@@ -956,21 +1019,13 @@ unsigned char *src, *dst;
 /*
  * Planar to planar
 */
-static void conv420to422_noninterp(src, dst)
-unsigned char *src, *dst;
-{
-   int w, h, i, j, j2;
+static void conv420to422_noninterp(unsigned char *src, unsigned char *dst) {
+   int w = Coded_Picture_Width >> 1;
+   int h = Coded_Picture_Height >> 1;
 
-   w = Coded_Picture_Width >> 1;
-   h = Coded_Picture_Height >> 1;
-
-   for (i = 0; i < w; i++) {
-      for (j = 0; j < h; j++) {
-         j2 = j << 1;
-         dst[w * j2] = src[w * j];
-         dst[w * (j2 + 1)] = src[w * j];
-      }
-      src++;
-      dst++;
+   for (int y = 0; y < h; y++) {
+      int y2 = y << 1;
+      memcpy(&dst[w * y2], &src[w * y], w);
+      memcpy(&dst[w * (y2 + 1)], &src[w * y], w);
    }
 }

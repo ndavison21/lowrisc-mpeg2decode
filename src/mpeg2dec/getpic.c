@@ -28,6 +28,7 @@
  */
 
 #include <stdio.h>
+#include <time.h>
 
 #include "config.h"
 #include "global.h"
@@ -71,6 +72,7 @@ static int decode_macroblock _ANSI_ARGS_((int *macroblock_type,
 void Decode_Picture(bitstream_framenum, sequence_framenum)
 int bitstream_framenum, sequence_framenum;
 {
+  struct timespec time1, time2;
 
   if (picture_structure==FRAME_PICTURE && Second_Field)
   {
@@ -101,12 +103,19 @@ int bitstream_framenum, sequence_framenum;
     Spatial_Prediction();
   }
 
+  clock_gettime(CLOCK_REALTIME, &time1);
   /* decode picture data ISO/IEC 13818-2 section 6.2.3.7 */
   picture_data(bitstream_framenum);
+  clock_gettime(CLOCK_REALTIME, &time2);
+  printf("picture_data: %dns\n", clock_diff(time1,time2).tv_nsec);
 
+
+  clock_gettime(CLOCK_REALTIME, &time1);
   /* write or display current or previously decoded reference frame */
   /* ISO/IEC 13818-2 section 6.1.1.11: Frame reordering */
   frame_reorder(bitstream_framenum, sequence_framenum);
+  clock_gettime(CLOCK_REALTIME, &time2);
+  printf("frame_reorder: %dns\n", clock_diff(time1,time2).tv_nsec);
 
   if (picture_structure!=FRAME_PICTURE)
     Second_Field = !Second_Field;

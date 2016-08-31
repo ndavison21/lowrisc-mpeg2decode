@@ -292,7 +292,7 @@ char *argv[];              /* argument vector */
   {
     printf("\n%s, %s, %s\n",Version,Author, "Modified by Nathanael Davison (nd359@cam.ac.uk)");
     printf("Usage:  mpeg2decode {options}\n\
-Options: -an       accelerators to use (0:NONE 1:ALL 2:YUV422TO444 3:YUV444TORGB)\n\
+Options: -an       accelerators to use (0:NONE 1:ALL 2:YUV422TO444 3:YUV444TORGB 4:RGB32TO16)\n\
          -b  file  main bitstream (base or spatial enhancement layer)\n\
          -cn file  conformance report (n: level)\n\
          -e  file  enhancement layer bitstream (SNR or Data Partitioning)\n\
@@ -316,7 +316,7 @@ Example:       mpeg2decode -b bitstream.mpg -f -r -o0 rec%%d\n\
     exit(0);
   }
 
-  Acc_Type = 0;
+  acc_type = 0;
   Output_Type = -1;
   i = 1;
 
@@ -414,10 +414,10 @@ Example:       mpeg2decode -b bitstream.mpg -f -r -o0 rec%%d\n\
         break;
 
       case 'A':
-        Acc_Type = atoi(&argv[i][2]);
-        if (Acc_Type > 3 || Acc_Type < 0) {
+        acc_type = atoi(&argv[i][2]);
+        if (acc_type > 4 || acc_type < 0) {
           printf("WARNING: Defaulting to no accelerator\n");
-          Acc_Type = 0;
+          acc_type = 0;
         }
         break;
 

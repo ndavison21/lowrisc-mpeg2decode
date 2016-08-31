@@ -139,7 +139,7 @@ module acc_tb;
    always_ff @(posedge clk or posedge rst)
    begin
        if (rst) begin
-          tb_insts[0] = 11 + (64'd2<<20);
+          tb_insts[0] = 13 + (64'd2<<20);
        end else
        begin
           if (lite_br_en)
