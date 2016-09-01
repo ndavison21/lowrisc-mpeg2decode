@@ -1,7 +1,0 @@
-Running: xsim.dir/yuv420to444_tb_behav/xsimk -simmode gui -wdb yuv420to444_tb_behav.wdb -simrunnum 0 -socket 59521
-Design successfully loaded
-Design Loading Memory Usage: 53100 KB (Peak: 53140 KB)
-Design Loading CPU Usage: 10 ms
-Simulation completed
-Simulation Memory Usage: 134836 KB (Peak: 200372 KB)
-Simulation CPU Usage: 20 ms

@@ -1,0 +1,126 @@
+==24332== Memcheck, a memory error detector
+==24332== Copyright (C) 2002-2015, and GNU GPL'd, by Julian Seward et al.
+==24332== Using Valgrind-3.11.0 and LibVEX; rerun with -h for copyright info
+==24332== Command: ./mpeg2decode -b test_3.mpg -o6
+==24332== 
+Could not set offset in framebuffer-information
+==24332== 
+==24332== HEAP SUMMARY:
+==24332==     in use at exit: 13,306,624 bytes in 68 blocks
+==24332==   total heap usage: 122 allocs, 54 frees, 69,293,824 bytes allocated
+==24332== 
+==24332== 1,024 bytes in 1 blocks are possibly lost in loss record 1 of 16
+==24332==    at 0x4C2DB8F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==24332==    by 0x4012C0: Initialize_Decoder (mpeg2dec.c:160)
+==24332==    by 0x401887: main (mpeg2dec.c:142)
+==24332== 
+==24332== 864,000 bytes in 5 blocks are definitely lost in loss record 8 of 16
+==24332==    at 0x4C2DB8F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==24332==    by 0x4061DF: display (store.c:185)
+==24332==    by 0x4068DC: store_one (store.c:121)
+==24332==    by 0x4069B0: Write_Frame (store.c:91)
+==24332==    by 0x402D0C: frame_reorder (getpic.c:771)
+==24332==    by 0x402D9F: Decode_Picture (getpic.c:109)
+==24332==    by 0x401648: video_sequence (mpeg2dec.c:685)
+==24332==    by 0x4016B5: Decode_Bitstream (mpeg2dec.c:618)
+==24332==    by 0x40188C: main (mpeg2dec.c:144)
+==24332== 
+==24332== 864,000 bytes in 5 blocks are definitely lost in loss record 9 of 16
+==24332==    at 0x4C2DB8F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==24332==    by 0x40620C: display (store.c:187)
+==24332==    by 0x4068DC: store_one (store.c:121)
+==24332==    by 0x4069B0: Write_Frame (store.c:91)
+==24332==    by 0x402D0C: frame_reorder (getpic.c:771)
+==24332==    by 0x402D9F: Decode_Picture (getpic.c:109)
+==24332==    by 0x401648: video_sequence (mpeg2dec.c:685)
+==24332==    by 0x4016B5: Decode_Bitstream (mpeg2dec.c:618)
+==24332==    by 0x40188C: main (mpeg2dec.c:144)
+==24332== 
+==24332== 864,000 bytes in 5 blocks are definitely lost in loss record 10 of 16
+==24332==    at 0x4C2DB8F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==24332==    by 0x4061DF: display (store.c:185)
+==24332==    by 0x4068DC: store_one (store.c:121)
+==24332==    by 0x4069F5: Write_Frame (store.c:94)
+==24332==    by 0x402D0C: frame_reorder (getpic.c:771)
+==24332==    by 0x402D9F: Decode_Picture (getpic.c:109)
+==24332==    by 0x401648: video_sequence (mpeg2dec.c:685)
+==24332==    by 0x4016B5: Decode_Bitstream (mpeg2dec.c:618)
+==24332==    by 0x40188C: main (mpeg2dec.c:144)
+==24332== 
+==24332== 864,000 bytes in 5 blocks are definitely lost in loss record 11 of 16
+==24332==    at 0x4C2DB8F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==24332==    by 0x40620C: display (store.c:187)
+==24332==    by 0x4068DC: store_one (store.c:121)
+==24332==    by 0x4069F5: Write_Frame (store.c:94)
+==24332==    by 0x402D0C: frame_reorder (getpic.c:771)
+==24332==    by 0x402D9F: Decode_Picture (getpic.c:109)
+==24332==    by 0x401648: video_sequence (mpeg2dec.c:685)
+==24332==    by 0x4016B5: Decode_Bitstream (mpeg2dec.c:618)
+==24332==    by 0x40188C: main (mpeg2dec.c:144)
+==24332== 
+==24332== 1,382,400 bytes in 1 blocks are possibly lost in loss record 12 of 16
+==24332==    at 0x4C2DB8F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==24332==    by 0x4062C8: display (store.c:204)
+==24332==    by 0x4068DC: store_one (store.c:121)
+==24332==    by 0x4069F5: Write_Frame (store.c:94)
+==24332==    by 0x402CE5: frame_reorder (getpic.c:765)
+==24332==    by 0x402D9F: Decode_Picture (getpic.c:109)
+==24332==    by 0x401648: video_sequence (mpeg2dec.c:685)
+==24332==    by 0x4016B5: Decode_Bitstream (mpeg2dec.c:618)
+==24332==    by 0x40188C: main (mpeg2dec.c:144)
+==24332== 
+==24332== 1,382,400 bytes in 8 blocks are definitely lost in loss record 13 of 16
+==24332==    at 0x4C2DB8F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==24332==    by 0x4061DF: display (store.c:185)
+==24332==    by 0x4068DC: store_one (store.c:121)
+==24332==    by 0x4069F5: Write_Frame (store.c:94)
+==24332==    by 0x402CE5: frame_reorder (getpic.c:765)
+==24332==    by 0x402D9F: Decode_Picture (getpic.c:109)
+==24332==    by 0x401648: video_sequence (mpeg2dec.c:685)
+==24332==    by 0x4016B5: Decode_Bitstream (mpeg2dec.c:618)
+==24332==    by 0x40188C: main (mpeg2dec.c:144)
+==24332== 
+==24332== 1,382,400 bytes in 8 blocks are definitely lost in loss record 14 of 16
+==24332==    at 0x4C2DB8F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==24332==    by 0x40620C: display (store.c:187)
+==24332==    by 0x4068DC: store_one (store.c:121)
+==24332==    by 0x4069F5: Write_Frame (store.c:94)
+==24332==    by 0x402CE5: frame_reorder (getpic.c:765)
+==24332==    by 0x402D9F: Decode_Picture (getpic.c:109)
+==24332==    by 0x401648: video_sequence (mpeg2dec.c:685)
+==24332==    by 0x4016B5: Decode_Bitstream (mpeg2dec.c:618)
+==24332==    by 0x40188C: main (mpeg2dec.c:144)
+==24332== 
+==24332== 1,555,200 bytes in 9 blocks are definitely lost in loss record 15 of 16
+==24332==    at 0x4C2DB8F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==24332==    by 0x4061DF: display (store.c:185)
+==24332==    by 0x4068DC: store_one (store.c:121)
+==24332==    by 0x4069B0: Write_Frame (store.c:91)
+==24332==    by 0x402CE5: frame_reorder (getpic.c:765)
+==24332==    by 0x402D9F: Decode_Picture (getpic.c:109)
+==24332==    by 0x401648: video_sequence (mpeg2dec.c:685)
+==24332==    by 0x4016B5: Decode_Bitstream (mpeg2dec.c:618)
+==24332==    by 0x40188C: main (mpeg2dec.c:144)
+==24332== 
+==24332== 1,555,200 bytes in 9 blocks are definitely lost in loss record 16 of 16
+==24332==    at 0x4C2DB8F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==24332==    by 0x40620C: display (store.c:187)
+==24332==    by 0x4068DC: store_one (store.c:121)
+==24332==    by 0x4069B0: Write_Frame (store.c:91)
+==24332==    by 0x402CE5: frame_reorder (getpic.c:765)
+==24332==    by 0x402D9F: Decode_Picture (getpic.c:109)
+==24332==    by 0x401648: video_sequence (mpeg2dec.c:685)
+==24332==    by 0x4016B5: Decode_Bitstream (mpeg2dec.c:618)
+==24332==    by 0x40188C: main (mpeg2dec.c:144)
+==24332== 
+==24332== LEAK SUMMARY:
+==24332==    definitely lost: 9,331,200 bytes in 54 blocks
+==24332==    indirectly lost: 0 bytes in 0 blocks
+==24332==      possibly lost: 1,383,424 bytes in 2 blocks
+==24332==    still reachable: 2,592,000 bytes in 12 blocks
+==24332==         suppressed: 0 bytes in 0 blocks
+==24332== Reachable blocks (those to which a pointer was found) are not shown.
+==24332== To see them, rerun with: --leak-check=full --show-leak-kinds=all
+==24332== 
+==24332== For counts of detected and suppressed errors, rerun with: -v
+==24332== ERROR SUMMARY: 10 errors from 10 contexts (suppressed: 0 from 0)

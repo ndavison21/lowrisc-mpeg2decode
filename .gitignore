@@ -1,7 +1,14 @@
 *.o
 *.doc
 *.par
-*.txt
+test.txt
+test_0.txt
+test_1.txt
+test_2.txt
+out.txt
+mpeg2decode
+mpeg2encode
+chroma_project/
 *.Y
 *.U
 *.V
