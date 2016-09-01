@@ -24,7 +24,7 @@
     <Option Name="IPUserFilesDir" Val="$PPRDIR/chroma_conversion.ip_user_files"/>
     <Option Name="IPStaticSourceDir" Val="$PPRDIR/chroma_conversion.ip_user_files/ipstatic"/>
     <Option Name="EnableBDX" Val="FALSE"/>
-    <Option Name="WTXSimLaunchSim" Val="14"/>
+    <Option Name="WTXSimLaunchSim" Val="17"/>
     <Option Name="WTModelSimLaunchSim" Val="0"/>
     <Option Name="WTQuestaLaunchSim" Val="0"/>
     <Option Name="WTIesLaunchSim" Val="0"/>
@@ -51,18 +51,15 @@
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PSRCDIR/sources_1/new/yuv420to444_tb.sv">
+      <File Path="$PSRCDIR/sources_1/imports/chroma_hardware/conversions.sv">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PSRCDIR/sources_1/imports/chroma_hardware/yuv420to444.sv">
+      <File Path="$PSRCDIR/sources_1/new/yuv420to444_tb.sv">
         <FileInfo>
-          <Attr Name="AutoDisabled" Val="1"/>
-          <Attr Name="ImportPath" Val="$PPRDIR/../chroma_hardware/yuv420to444.sv"/>
-          <Attr Name="ImportTime" Val="1470222006"/>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>

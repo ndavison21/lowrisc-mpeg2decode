@@ -3,6 +3,28 @@ Copyright 1986-1999, 2001-2016 Xilinx, Inc. All Rights Reserved.
 Running: /usr/groups/comparch-lowrisc/tools/xilinx/Vivado/2016.2/bin/unwrapped/lnx64.o/xelab -wto 09f3d68d4ba145288e6e89aeba023acf --debug typical --relax --mt 8 -L xil_defaultlib -L unisims_ver -L unimacro_ver -L secureip --snapshot yuv420to444_tb_behav xil_defaultlib.yuv420to444_tb xil_defaultlib.glbl -log elaborate.log 
 Using 8 slave threads.
 Starting static elaboration
+WARNING: [VRFC 10-597] element index 3 into t_keep is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:67]
+WARNING: [VRFC 10-597] element index 7 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:70]
+WARNING: [VRFC 10-597] element index 15 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:71]
+WARNING: [VRFC 10-597] element index 23 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:72]
+WARNING: [VRFC 10-597] element index 31 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:73]
+WARNING: [VRFC 10-597] element index 39 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:75]
+WARNING: [VRFC 10-597] element index 47 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:76]
+WARNING: [VRFC 10-597] element index 53 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:77]
+WARNING: [VRFC 10-597] element index 61 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:78]
+WARNING: [VRFC 10-597] element index 7 into t_keep is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:83]
+WARNING: [VRFC 10-597] element index 7 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:86]
+WARNING: [VRFC 10-597] element index 15 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:87]
+WARNING: [VRFC 10-597] element index 23 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:88]
+WARNING: [VRFC 10-597] element index 32 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:89]
+WARNING: [VRFC 10-597] element index 7 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:97]
+WARNING: [VRFC 10-597] element index 15 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:98]
+WARNING: [VRFC 10-597] element index 23 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:99]
+WARNING: [VRFC 10-597] element index 31 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:100]
+WARNING: [VRFC 10-597] element index 39 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:102]
+WARNING: [VRFC 10-597] element index 47 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:103]
+WARNING: [VRFC 10-597] element index 53 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:104]
+WARNING: [VRFC 10-597] element index 61 into t_data is out of bounds [/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.srcs/sources_1/imports/chroma_hardware/conversions.sv:105]
 Completed static elaboration
 Starting simulation data flow analysis
 WARNING: [XSIM 43-4100] "/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chroma_conversion.sim/sim_1/behav/glbl.v" Line 6. Module glbl has a timescale but at least one module in design doesn't have timescale.
@@ -10,7 +32,7 @@ WARNING: [XSIM 43-4100] "/auto/homes/nd359/Documents/mpeg2/chroma_conversion/chr
 Completed simulation data flow analysis
 Time Resolution for simulation is 1ps
 Compiling module xil_defaultlib.nasti_stream_channel
-Compiling module xil_defaultlib.yuv420to444_noninterp
+Compiling module xil_defaultlib.yuv422to444_noninterp
 Compiling module xil_defaultlib.yuv420to444_tb
 Compiling module xil_defaultlib.glbl
 Built simulation snapshot yuv420to444_tb_behav

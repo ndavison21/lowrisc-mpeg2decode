@@ -153,7 +153,7 @@ int offset, incr, height;
   int y, u, v, crv, cbu, cgu, cgv;
   unsigned char r, g, b, *py, *pu, *pv;
 
-  static unsigned char *u422, *v422, *u444, *v444, *yuv422, *yuv444;
+  static unsigned char *u422, *v422, *u444, *v444, *yuv422, *yuv444, *yuv422_planar[3];
 
   if (chroma_format==CHROMA444)
   {
@@ -189,13 +189,12 @@ int offset, incr, height;
 
       if (PACKED)
       {
-        unsigned char * yuv422_planar[3];
         yuv422_planar[0] = src[0];
         yuv422_planar[1] = u422;
         yuv422_planar[2] = v422; 
         if (!(yuv422 = (unsigned char *)malloc(4*(Coded_Picture_Width>>1)*Coded_Picture_Height)))
           Error("malloc failed");
-        convPlanar422ToPacked422(src,yuv422);
+        convPlanar422ToPacked422(yuv422_planar,yuv422);
         if (!(yuv444 = (unsigned char *)malloc(4*Coded_Picture_Width*Coded_Picture_Height)))
           Error("malloc failed");
         conv422to444_packed(yuv422,yuv444);
@@ -208,6 +207,7 @@ int offset, incr, height;
     }
     else
     {
+      if(PACKED) exit(1);
       conv422to444_noninterp(src[1],u444);
       conv422to444_noninterp(src[2],v444);
     }
@@ -357,9 +357,6 @@ unsigned char *r, *g, *b;
   *r = Clip[(c + 409 * e + 128) >> 8];
   *g = Clip[(c - 100 * d - 208 * e + 128) >> 8];
   *b = Clip[(c + 516 * d + 128) >> 8];
-
-  printf("yuv: (%u,%u,%u)\n", y, u, v);
-  // printf("rgb: (%u,%u,%u)\n", *r, *g, *b);
 }
 
 /*
@@ -373,9 +370,9 @@ unsigned char *r,*g,*b;
   unsigned char y, u, v;
   int c, d, e;
 
-  u = p[0];
-  y = p[1];
-  v = p[2];
+  v = p[0];
+  u = p[1];
+  y = p[2];
 
   c = 298 * (y - 16);
   d = u - 128;
@@ -386,8 +383,6 @@ unsigned char *r,*g,*b;
   *g = Clip[(c - 100 * (d) - 208 * (e) + 128) >> 8];
   *b = Clip [(c + 516 * (d) + 128) >> 8];
 
-  printf("yuv: (%u,%u,%u)\n", y, u, v);
-  //printf("rgb: (%u,%u,%u)\n", *r, *g, *b);
 }
 
 
@@ -699,15 +694,17 @@ unsigned char *src,*dst;
   int i=0;
   while(i<4*Coded_Picture_Height*Coded_Picture_Width)
   {
+    dst[i++] = src[3]; // V
     dst[i++] = src[1]; // U
     dst[i++] = src[0]; // Y0
-    dst[i++] = src[3]; // V
     dst[i++] = 0;
 
+    dst[i++] = src[3]; // V
     dst[i++] = src[1]; // U
     dst[i++] = src[2]; // Y1
-    dst[i++] = src[3]; // V
     dst[i++] = 0;
+
+    src+=4;
   }
 }
 
@@ -726,7 +723,6 @@ unsigned char *src[],*dst;
 
   while (k<4*Coded_Picture_Height*(Coded_Picture_Width>>1))
   {
-    printf("YUYV: %u,%u,%u,%u\n", src[0][y], src[1][u], src[0][y+1], src[2][v]);
     dst[k++] = src[0][y++]; // Y0
     dst[k++] = src[1][u++]; // U
     dst[k++] = src[0][y++]; // Y1
