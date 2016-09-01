@@ -43,8 +43,12 @@
 #include "config.h"
 #include "global.h"
 
-// define aligned_alloc(align, size) malloc(size)
+#ifdef __x86_64__
+#define COLOR_DEPTH 32
+#else
 #define COLOR_DEPTH 16
+#endif
+
 
 /* private prototypes */
 static void store_one _ANSI_ARGS_((char *outname, unsigned char *src[],
@@ -73,7 +77,10 @@ static void convYuvToRgb_simple _ANSI_ARGS_ ((int y, int u, int v, unsigned char
 static void convYuvToRgb_packed(unsigned char *src, unsigned char *dst, int size);
 static void convYuvToRgb_accelerate(unsigned char *src, unsigned char *dst, int size);
 
-static void convRgb32to16_accelerate(unsigned char *src, uint8_t *dst, int size);
+static void convRgb32to16_packed(uint8_t *src, uint8_t *dst, int size);
+static void convRgb32to16_accelerate(uint8_t *src, uint8_t *dst, int size);
+
+static void convYuv422ToRgb16_accelerate(uint8_t *src, uint8_t *dst, int size);
 
 #define OBFRSIZE 4096
 
@@ -91,6 +98,15 @@ struct request {
    int attr;
 } acc_req;
 
+static void* alloc(size_t size) {
+#ifdef __x86_64__
+   void* mem = malloc(size);
+#else
+   void* mem = aligned_alloc(64, size);
+#endif
+   if (!mem) Error("malloc failed");
+   return mem;
+}
 
 
 /*
@@ -176,10 +192,6 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
    int y, u, v, crv, cbu, cgu, cgv;
    unsigned char r, g, b, *py, *pu, *pv;
 
-   static unsigned char *u422, *v422, *u444, *v444;
-
-   unsigned char *yuv422 = NULL, *yuv444 = NULL, *yuv422_planar[3];
-
    if (!acc_initialized && acc_type) {
       acc_initialized = 1;
       if (accfd == -1) accfd = open("/dev/acc", O_RDWR);
@@ -240,7 +252,14 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
       }
    }
 
+   // Set up for double buffering
+   if (vinfo.yoffset == vinfo.yres)
+      vinfo.yoffset = 0;
+   else
+      vinfo.yoffset = vinfo.yres;
+
    if (!PACKED) {
+      unsigned char *u422, *v422, *u444, *v444;
       if (chroma_format == CHROMA444) {
          u444 = src[1];
          v444 = src[2];
@@ -257,63 +276,14 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
          if (chroma_format == CHROMA420) {
             conv420to422_noninterp(src[1], u422); // U data
             conv420to422_noninterp(src[2], v422); // V data
+            conv422to444_noninterp(u422, u444);
+            conv422to444_noninterp(v422, v444);
          } else {
             conv422to444_noninterp(src[1], u444);
             conv422to444_noninterp(src[2], v444);
          }
       }
-   } else {
-      if (!(u422 = (unsigned char *)malloc((Coded_Picture_Width >> 1) * Coded_Picture_Height)))
-         Error("malloc failed");
-      if (!(v422 = (unsigned char *)malloc((Coded_Picture_Width >> 1) * Coded_Picture_Height)))
-         Error("malloc failed");
 
-      if (chroma_format == CHROMA420) {
-         clock_gettime(CLOCK_REALTIME, &time1);
-         conv420to422_noninterp(src[1], u422); // U data
-         conv420to422_noninterp(src[2], v422); // V data
-         clock_gettime(CLOCK_REALTIME, &time2);
-         printf("420->422: %dns\n", clock_diff(time1, time2).tv_nsec);
-
-         yuv422_planar[0] = src[0];
-         yuv422_planar[1] = u422;
-         yuv422_planar[2] = v422;
-
-         if (!(yuv422 = (unsigned char *)aligned_alloc(64, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height)))
-            Error("malloc failed");
-         clock_gettime(CLOCK_REALTIME, &time1);
-         convPlanar422ToPacked422(yuv422_planar, yuv422);
-         clock_gettime(CLOCK_REALTIME, &time2);
-         printf("Packing: %dns\n", clock_diff(time1, time2).tv_nsec);
-
-         if (!(yuv444 = (unsigned char *)aligned_alloc(64, 4 * Coded_Picture_Width * Coded_Picture_Height)))
-            Error("malloc failed");
-
-         clock_gettime(CLOCK_REALTIME, &time1);
-         if (acc_type & ACC_YUV422TO444) {
-            conv422to444_accelerate(yuv422, yuv444, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height);
-         } else {
-            conv422to444_packed(yuv422, yuv444);
-         }
-         clock_gettime(CLOCK_REALTIME, &time2);
-         printf("422->444: %dns\n", clock_diff(time1, time2).tv_nsec);
-      } else {
-         exit(1);
-      }
-   }
-
-
-   // Set up for double buffering
-   if (vinfo.yoffset == vinfo.yres)
-      vinfo.yoffset = 0;
-   else
-      vinfo.yoffset = vinfo.yres;
-
-
-   optr = obfr;
-
-   if (!PACKED) {
-      unsigned char* yuv444_working = yuv444;
       for (i = 0; i < height; i++) {
          py = src[0] + offset + incr * i;
          pu = u444 + offset + incr * i;
@@ -328,7 +298,7 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
 
             // Writing to framebuffer
             long int location = (j + vinfo.xoffset) * (vinfo.bits_per_pixel / 8) +
-                       (i + vinfo.yoffset) * finfo.line_length;
+                                (i + vinfo.yoffset) * finfo.line_length;
 
             if (vinfo.bits_per_pixel == 32) {
                *(fbp + location + 0) = b;
@@ -342,53 +312,107 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
          }
       }
    } else {
-      unsigned char* rgb = aligned_alloc(64, 4 * Coded_Picture_Width * Coded_Picture_Height);
-      if (rgb == NULL)
-         Error("malloc failed");
+#define START_TIME() clock_gettime(CLOCK_REALTIME, &time1)
+#define STOP_TIME(op) do{clock_gettime(CLOCK_REALTIME, &time2); printf(op ": %dns\n", clock_diff(time1, time2).tv_nsec * 40);}while(0)
+      unsigned char *yuv422 = NULL;
+      if (chroma_format == CHROMA420) {
+         unsigned char *u422, *v422;
+         if (!(u422 = (unsigned char *)malloc((Coded_Picture_Width >> 1) * Coded_Picture_Height)))
+            Error("malloc failed");
+         if (!(v422 = (unsigned char *)malloc((Coded_Picture_Width >> 1) * Coded_Picture_Height)))
+            Error("malloc failed");
 
-      clock_gettime(CLOCK_REALTIME, &time1);
-      if (acc_type & ACC_YUV444TORGB) {
-         convYuvToRgb_accelerate(yuv444, rgb, 4 * Coded_Picture_Width * Coded_Picture_Height);
+         clock_gettime(CLOCK_REALTIME, &time1);
+         conv420to422_noninterp(src[1], u422); // U data
+         conv420to422_noninterp(src[2], v422); // V data
+         clock_gettime(CLOCK_REALTIME, &time2);
+         printf("420->422: %dns\n", clock_diff(time1, time2).tv_nsec);
+
+         unsigned char *yuv422_planar[3];
+         yuv422_planar[0] = src[0];
+         yuv422_planar[1] = u422;
+         yuv422_planar[2] = v422;
+
+         if (!(yuv422 = (unsigned char *)aligned_alloc(64, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height)))
+            Error("malloc failed");
+         clock_gettime(CLOCK_REALTIME, &time1);
+         convPlanar422ToPacked422(yuv422_planar, yuv422);
+         clock_gettime(CLOCK_REALTIME, &time2);
+         printf("Packing: %dns\n", clock_diff(time1, time2).tv_nsec);
+
+         free(u422);
+         free(v422);
       } else {
-         convYuvToRgb_packed(yuv444, rgb, 4 * Coded_Picture_Width * Coded_Picture_Height);
+         if (!(yuv422 = (unsigned char *)aligned_alloc(64, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height)))
+            Error("malloc failed");
+         clock_gettime(CLOCK_REALTIME, &time1);
+         convPlanar422ToPacked422(src, yuv422);
+         clock_gettime(CLOCK_REALTIME, &time2);
+         printf("Packing: %dns\n", clock_diff(time1, time2).tv_nsec);
       }
-      clock_gettime(CLOCK_REALTIME, &time2);
-      printf("444->RGB: %dns\n", clock_diff(time1, time2).tv_nsec);
 
-      int k = 0;
-
-      if (vinfo.bits_per_pixel != 32 && (acc_type & ACC_RGB32TO16)) {
-         uint8_t* rgb16 = aligned_alloc(64, 2 * Coded_Picture_Width * Coded_Picture_Height);
-         convRgb32to16_accelerate(rgb, rgb16, 4 * Coded_Picture_Width * Coded_Picture_Height);
+      if (vinfo.bits_per_pixel != 32 && (acc_type & ACC_YUV422TO444) && (acc_type & ACC_YUV444TORGB) && (acc_type & ACC_RGB32TO16)) {
+         uint8_t* rgb16 = alloc(2 * Coded_Picture_Width * Coded_Picture_Height);
+         START_TIME();
+         convYuv422ToRgb16_accelerate(yuv422, rgb16, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height);
+         STOP_TIME("422->RGB");
 
          for (i = 0; i < height; i++) {
-            memcpy(fbp + i * finfo.line_length, rgb16 + i * finfo.line_length, 2 * horizontal_size);
+            memcpy(fbp + (i + vinfo.yoffset) * finfo.line_length + vinfo.xoffset * (vinfo.bits_per_pixel / 8),
+                   rgb16 + i * 2 * Coded_Picture_Width, 2 * horizontal_size);
          }
+         free(rgb16);
       } else {
-         for (i = 0; i < height; i++) {
-            for (j = 0; j < horizontal_size; j++) {
-               // Writing to framebuffer
-               long int location = (j + vinfo.xoffset) * (vinfo.bits_per_pixel / 8) +
-                                   (i + vinfo.yoffset) * finfo.line_length;
+         // Convert packed 422 to packed 444
+         unsigned char *yuv444 = alloc(4 * Coded_Picture_Width * Coded_Picture_Height);
 
-               b = rgb[k++];
-               g = rgb[k++];
-               r = rgb[k++];
-               k++;
-
-               if (vinfo.bits_per_pixel == 32) {
-                  *(fbp + location + 0) = b;
-                  *(fbp + location + 1) = g;
-                  *(fbp + location + 2) = r;
-                  *(fbp + location + 3) = 255;
-               } else { // assume 16
-                  *(fbp + location + 0) = ((g << 3) & 0b11100000) | (b >> 3);
-                  *(fbp + location + 1) = (r & 0b11111000 ) | (g >> 5);
-               }
-            }
+         START_TIME();
+         if (acc_type & ACC_YUV422TO444) {
+            conv422to444_accelerate(yuv422, yuv444, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height);
+         } else {
+            conv422to444_packed(yuv422, yuv444);
          }
+         STOP_TIME("422->444");
+         free(yuv422);
 
-         free(rgb);
+         // convert packed 444 to rgb32
+         uint8_t* rgb = alloc(4 * Coded_Picture_Width * Coded_Picture_Height);
+
+         START_TIME();
+         if (acc_type & ACC_YUV444TORGB) {
+            convYuvToRgb_accelerate(yuv444, rgb, 4 * Coded_Picture_Width * Coded_Picture_Height);
+            // free(rgb);
+            // rgb = yuv444;
+         } else {
+            convYuvToRgb_packed(yuv444, rgb, 4 * Coded_Picture_Width * Coded_Picture_Height);
+         }
+         STOP_TIME("444->RGB");
+         free(yuv444);
+
+         if (vinfo.bits_per_pixel == 32) {
+            for (i = 0; i < height; i++) {
+               memcpy(fbp + (i + vinfo.yoffset) * finfo.line_length + vinfo.xoffset * 4,
+                      rgb + i * 4 * Coded_Picture_Width, 4 * horizontal_size);
+            }
+            free(rgb);
+         } else {
+            uint8_t* rgb16 = alloc(2 * Coded_Picture_Width * Coded_Picture_Height);
+
+            START_TIME();
+            if (acc_type & ACC_RGB32TO16) {
+               convRgb32to16_accelerate(rgb, rgb16, 4 * Coded_Picture_Width * Coded_Picture_Height);
+            } else {
+               convRgb32to16_packed(rgb, rgb16, 4 * Coded_Picture_Width * Coded_Picture_Height);
+            }
+            STOP_TIME("RGB32->RGB16");
+            free(rgb);
+
+            for (i = 0; i < height; i++) {
+               memcpy(fbp + (i + vinfo.yoffset) * finfo.line_length + vinfo.xoffset * (vinfo.bits_per_pixel / 8),
+                      rgb16 + i * 2 * Coded_Picture_Width, 2 * horizontal_size);
+            }
+            free(rgb16);
+         }
       }
    }
 
@@ -397,18 +421,31 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
       Error(Error_Text);
    }
 
-   if (PACKED) {
-      free(yuv422);
-      free(yuv444);
-   }
-
-   // if (ioctl(fbfd, FBIOPUT_VSCREENINFO, &vinfo_bak) == -1) {
-   //   sprintf(Error_Text,"Could not reset variable framebuffer-information");
-   //   Error(Error_Text);
-   // }
 }
 
-static void convRgb32to16_accelerate(unsigned char *src, uint8_t *dst, int size) {
+static void convYuv422ToRgb16_accelerate(uint8_t *src, uint8_t *dst, int size) {
+   struct request acc_req = {
+      .src    = src,
+      .dest   = dst,
+      .len    = size,
+      .opcode = 1,
+      .attr   = 3
+   };
+
+   if (ioctl(accfd, 1, &acc_req) == -1) {
+      Error("Unable to issue instruction to YUV422toRGB16 accelerator\n");
+   }
+
+   int status = 1;
+
+   while (status) {
+      if (ioctl(accfd, 0, &status) == -1) {
+         Error("Unable to query status of accelerator\n");
+      }
+   }
+}
+
+static void convRgb32to16_accelerate(uint8_t *src, uint8_t *dst, int size) {
    struct request acc_req = {
       .src    = src,
       .dest   = dst,
@@ -428,6 +465,18 @@ static void convRgb32to16_accelerate(unsigned char *src, uint8_t *dst, int size)
          Error("Unable to query status of accelerator\n");
       }
    }
+}
+
+static void convRgb32to16_packed(uint8_t *src, uint8_t *dst, int size) {
+   for (int i = 0, j = 0; i < size; i += 4, j += 2) {
+      uint8_t b = src[i + 0];
+      uint8_t g = src[i + 1];
+      uint8_t r = src[i + 2];
+
+      dst[j + 0] = ((g << 3) & 0b11100000) | (b >> 3);
+      dst[j + 1] = (r & 0b11111000 ) | (g >> 5);
+   }
+
 }
 
 

@@ -59,8 +59,7 @@ CC = gcc
 CFLAGS = -O2 -Wno-unused-result -std=gnu11
 
 # When compiling for profiling:
-#  = gcc
-# FLAGS = -O2 -pg -fno-inline
+# CFLAGS = -O2 -pg -fno-inline
 
 # When compiling for FPGA:
 FPGA_CC = riscv64-unknown-linux-gnu-gcc
