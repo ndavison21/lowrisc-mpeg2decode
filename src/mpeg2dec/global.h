@@ -28,6 +28,8 @@
  */
 
 #include "mpeg2dec.h"
+#include <stdint.h>
+#include <stddef.h>
 
 /* choose between declaration (GLOBAL undefined)
  * and definition (GLOBAL defined)
@@ -105,7 +107,9 @@ void motion_vector _ANSI_ARGS_((int *PMV, int *dmvector,
 void Dual_Prime_Arithmetic _ANSI_ARGS_((int DMV[][2], int *dmvector, int mvx, int mvy));
 
 /* mpeg2dec.c */
-void Error _ANSI_ARGS_((char *text));
+void fatal(const char *text, ...);
+#define Error(...) fatal(__VA_ARGS__)
+
 void Warning _ANSI_ARGS_((char *text));
 void Print_Bits _ANSI_ARGS_((int code, int bits, int len));
 
@@ -119,7 +123,6 @@ void Spatial_Prediction _ANSI_ARGS_((void));
 
 /* store.c */
 void Write_Frame _ANSI_ARGS_((unsigned char *src[], int frame));
-struct timespec clock_diff(struct timespec start, struct timespec end);
 
 #ifdef DISPLAY
 /* display.c */
@@ -247,7 +250,8 @@ EXTERN int hiQdither;
 /* accelerator types (Acc_Type) */
 #define ACC_YUV422TO444 1
 #define ACC_YUV444TORGB 2
-#define ACC_RGB32TO16 4
+#define ACC_RGB32TO16   4
+#define ACC_IDCT        8
 EXTERN int acc_type;
 
 /* decoder operation control flags */
@@ -460,8 +464,10 @@ EXTERN struct layer_data {
   int priority_breakpoint;
   int quantizer_scale;
   int intra_slice;
+
+  __attribute__((aligned(64)))
   short block[12][64];
-} base, enhan, *ld;
+} __attribute__((aligned(64))) base, __attribute__((aligned(64))) enhan, *ld;
 
 
 
@@ -494,3 +500,18 @@ void Clear_Verify_Headers _ANSI_ARGS_((void));
 EXTERN int global_MBA;
 EXTERN int global_pic;
 EXTERN int True_Framenum;
+
+/* Accelerator */
+void acc_init(void);
+void acc_fini(void);
+void acc_wait(void);
+void acc_idct(int16_t *src, int16_t *dst, size_t size);
+void acc_idct_async(int16_t *src, int16_t *dst, size_t size);
+void acc_yuv422toYuv444(unsigned char *src, unsigned char *dst, int size);
+void acc_yuv444toRgb32(unsigned char *src, unsigned char *dst, int size);
+void acc_rgb32toRgb16(uint8_t *src, uint8_t *dst, int size);
+void acc_yuv422toRgb16(uint8_t *src, uint8_t *dst, int size);
+
+uint64_t time_get();
+void time_start();
+void time_end(const char*);

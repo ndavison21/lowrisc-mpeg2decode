@@ -33,6 +33,7 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #define GLOBAL
 #include "config.h"
@@ -142,7 +143,15 @@ char *argv[];
 
   Initialize_Decoder();
 
+  if (acc_type) {
+    acc_init();
+  }
+
   ret = Decode_Bitstream();
+
+  if (acc_type) {
+    acc_fini();
+  }
 
   close(base.Infile);
 
@@ -167,10 +176,12 @@ static void Initialize_Decoder()
     Clip[i] = (i<0) ? 0 : ((i>255) ? 255 : i);
 
   /* IDCT */
-  if (Reference_IDCT_Flag)
-    Initialize_Reference_IDCT();
-  else
-    Initialize_Fast_IDCT();
+  if (!(acc_type & ACC_IDCT)) {
+    if (Reference_IDCT_Flag)
+      Initialize_Reference_IDCT();
+    else
+      Initialize_Fast_IDCT();
+  }
 
 }
 
@@ -262,10 +273,12 @@ static void Initialize_Sequence()
 
 }
 
-void Error(text)
-char *text;
+void Error(const char* text, ...)
 {
-  fprintf(stderr, "%s", text);
+  va_list ap;
+  va_start(ap, text);
+  vfprintf(stderr, text, ap);
+  va_end(ap);
   exit(1);
 }
 
@@ -292,7 +305,7 @@ char *argv[];              /* argument vector */
   {
     printf("\n%s, %s, %s\n",Version,Author, "Modified by Nathanael Davison (nd359@cam.ac.uk)");
     printf("Usage:  mpeg2decode {options}\n\
-Options: -an       accelerators to use (0:NONE 1:YUV422TO444 2:YUV444TORGB 4:RGB32TO16 7:ALL)\n\
+Options: -an       accelerators to use (0:NONE 1:YUV422TO444 2:YUV444TORGB 4:RGB32TO16 8:IDCT 15:ALL )\n\
          -b  file  main bitstream (base or spatial enhancement layer)\n\
          -cn file  conformance report (n: level)\n\
          -e  file  enhancement layer bitstream (SNR or Data Partitioning)\n\

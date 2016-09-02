@@ -56,7 +56,7 @@
 
 # When compiling for desktop
 CC = gcc
-CFLAGS = -O2 -Wno-unused-result -std=gnu11
+CFLAGS = -O2 -flto -Wno-unused-result -std=gnu11
 
 # When compiling for profiling:
 # CFLAGS = -O2 -pg -fno-inline

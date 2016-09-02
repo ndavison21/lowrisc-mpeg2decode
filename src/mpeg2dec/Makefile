@@ -67,7 +67,7 @@ CFLAGS = -O2 -pg $(USE_DISP) $(USE_SHMEM) $(INCLUDEDIR) $(TRACE) $(VERBOSE) $(VE
 # CC = riscv64-unknown-linux-gnu-gcc
 # CFLAGS = -static -O2 $(USE_DISP) $(USE_SHMEM) $(INCLUDEDIR) $(TRACE) $(VERBOSE) $(VERIFY) $(WARNINGS)
 
-OBJ = mpeg2dec.o getpic.o motion.o getvlc.o gethdr.o getblk.o getbits.o store.o recon.o spatscal.o idct.o idctref.o systems.o subspic.o verify.o
+OBJ = mpeg2dec.o getpic.o motion.o getvlc.o gethdr.o getblk.o getbits.o store.o recon.o spatscal.o idct.o idctref.o systems.o subspic.o verify.o acc.o util.o
 
 all: mpeg2decode
 
@@ -95,6 +95,8 @@ mpeg2dec.o : mpeg2dec.c config.h global.h mpeg2dec.h
 recon.o : recon.c config.h global.h mpeg2dec.h 
 spatscal.o : spatscal.c config.h global.h mpeg2dec.h 
 store.o : store.c config.h global.h mpeg2dec.h 
+acc.o : acc.c config.h global.h mpeg2dec.h 
+util.o : acc.c config.h global.h mpeg2dec.h 
 
 # additions since July 4, 1994 edition
 systems.o : systems.c config.h global.h mpeg2dec.h 

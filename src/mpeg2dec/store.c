@@ -38,7 +38,6 @@
 #include <sys/ioctl.h>
 
 #include <string.h>
-#include <time.h>
 
 #include "config.h"
 #include "global.h"
@@ -69,18 +68,13 @@ static void conv422to444 _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv420to422_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv422to444_noninterp _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
 static void conv422to444_packed _ANSI_ARGS_((unsigned char *src, unsigned char *dst));
-static void conv422to444_accelerate _ANSI_ARGS_((unsigned char *src, unsigned char *dst, int size));
 static void convPlanar422ToPacked422 _ANSI_ARGS_((unsigned char *src[], unsigned char *dst));
 static void convYuvToRgb _ANSI_ARGS_ ((int y, int u, int v, int crv, int cbu, int cgu, int cgv, unsigned char *r, unsigned char  *g, unsigned char  *b));
 static void convYuvToRgb_simple _ANSI_ARGS_ ((int y, int u, int v, unsigned char *r, unsigned char  *g, unsigned char  *b));
 
 static void convYuvToRgb_packed(unsigned char *src, unsigned char *dst, int size);
-static void convYuvToRgb_accelerate(unsigned char *src, unsigned char *dst, int size);
 
 static void convRgb32to16_packed(uint8_t *src, uint8_t *dst, int size);
-static void convRgb32to16_accelerate(uint8_t *src, uint8_t *dst, int size);
-
-static void convYuv422ToRgb16_accelerate(uint8_t *src, uint8_t *dst, int size);
 
 #define OBFRSIZE 4096
 
@@ -90,13 +84,6 @@ static unsigned char obfr[OBFRSIZE];
 static unsigned char *optr;
 static int outfile;
 
-struct request {
-   void* src;
-   void* dest;
-   size_t len;
-   int opcode;
-   int attr;
-} acc_req;
 
 static void* alloc(size_t size) {
 #ifdef __x86_64__
@@ -107,24 +94,6 @@ static void* alloc(size_t size) {
    if (!mem) Error("malloc failed");
    return mem;
 }
-
-
-/*
- * Debug
-*/
-struct timespec clock_diff(struct timespec start, struct timespec end) {
-   struct timespec temp;
-   if ((end.tv_nsec - start.tv_nsec) < 0) {
-      temp.tv_sec = end.tv_sec - start.tv_sec - 1;
-      temp.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
-   } else {
-      temp.tv_sec = end.tv_sec - start.tv_sec;
-      temp.tv_nsec = end.tv_nsec - start.tv_nsec;
-   }
-   return temp;
-}
-
-
 
 /*
  * store a picture as either one frame or two fields
@@ -177,8 +146,8 @@ static void store_one(char *outname, unsigned char *src[], int offset, int incr,
    }
 }
 
-static int fb_initialized = 0, acc_initialized = 0;
-static int fbfd = -1, accfd = -1;
+static int fb_initialized = 0;
+static int fbfd = -1;
 static struct fb_var_screeninfo vinfo, vinfo_bak;
 static struct fb_fix_screeninfo finfo;
 static long int screensize = 0;
@@ -186,20 +155,10 @@ static char *fbp = 0;
 
 /* function by nd359: Outputting straight to Framebuffer */
 static void display(unsigned char *src[], int offset, int incr, int height) {
-   struct timespec time1, time2;
    unsigned int i = 0, j = 0;
 
    int y, u, v, crv, cbu, cgu, cgv;
    unsigned char r, g, b, *py, *pu, *pv;
-
-   if (!acc_initialized && acc_type) {
-      acc_initialized = 1;
-      if (accfd == -1) accfd = open("/dev/acc", O_RDWR);
-
-      if (accfd == -1) {
-         Error("Couldn't open accelerator\n");
-      }
-   }
 
    if (!fb_initialized) {
       fb_initialized = 1;
@@ -312,8 +271,6 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
          }
       }
    } else {
-#define START_TIME() clock_gettime(CLOCK_REALTIME, &time1)
-#define STOP_TIME(op) do{clock_gettime(CLOCK_REALTIME, &time2); printf(op ": %dns\n", clock_diff(time1, time2).tv_nsec * 40);}while(0)
       unsigned char *yuv422 = NULL;
       if (chroma_format == CHROMA420) {
          unsigned char *u422, *v422;
@@ -322,11 +279,10 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
          if (!(v422 = (unsigned char *)malloc((Coded_Picture_Width >> 1) * Coded_Picture_Height)))
             Error("malloc failed");
 
-         clock_gettime(CLOCK_REALTIME, &time1);
+         time_start();
          conv420to422_noninterp(src[1], u422); // U data
          conv420to422_noninterp(src[2], v422); // V data
-         clock_gettime(CLOCK_REALTIME, &time2);
-         printf("420->422: %dns\n", clock_diff(time1, time2).tv_nsec);
+         time_end("420->422");
 
          unsigned char *yuv422_planar[3];
          yuv422_planar[0] = src[0];
@@ -335,27 +291,25 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
 
          if (!(yuv422 = (unsigned char *)aligned_alloc(64, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height)))
             Error("malloc failed");
-         clock_gettime(CLOCK_REALTIME, &time1);
+         time_start();
          convPlanar422ToPacked422(yuv422_planar, yuv422);
-         clock_gettime(CLOCK_REALTIME, &time2);
-         printf("Packing: %dns\n", clock_diff(time1, time2).tv_nsec);
+         time_end("Packing");
 
          free(u422);
          free(v422);
       } else {
          if (!(yuv422 = (unsigned char *)aligned_alloc(64, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height)))
             Error("malloc failed");
-         clock_gettime(CLOCK_REALTIME, &time1);
+         time_start();
          convPlanar422ToPacked422(src, yuv422);
-         clock_gettime(CLOCK_REALTIME, &time2);
-         printf("Packing: %dns\n", clock_diff(time1, time2).tv_nsec);
+         time_end("Packing");
       }
 
-      if (vinfo.bits_per_pixel != 32 && (acc_type & ACC_YUV422TO444) && (acc_type & ACC_YUV444TORGB) && (acc_type & ACC_RGB32TO16)) {
+      if (0 && vinfo.bits_per_pixel != 32 && (acc_type & ACC_YUV422TO444) && (acc_type & ACC_YUV444TORGB) && (acc_type & ACC_RGB32TO16)) {
          uint8_t* rgb16 = alloc(2 * Coded_Picture_Width * Coded_Picture_Height);
-         START_TIME();
-         convYuv422ToRgb16_accelerate(yuv422, rgb16, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height);
-         STOP_TIME("422->RGB");
+         time_start();
+         acc_yuv422toRgb16(yuv422, rgb16, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height);
+         time_end("422->RGB");
 
          for (i = 0; i < height; i++) {
             memcpy(fbp + (i + vinfo.yoffset) * finfo.line_length + vinfo.xoffset * (vinfo.bits_per_pixel / 8),
@@ -366,27 +320,27 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
          // Convert packed 422 to packed 444
          unsigned char *yuv444 = alloc(4 * Coded_Picture_Width * Coded_Picture_Height);
 
-         START_TIME();
+         time_start();
          if (acc_type & ACC_YUV422TO444) {
-            conv422to444_accelerate(yuv422, yuv444, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height);
+            acc_yuv422toYuv444(yuv422, yuv444, 4 * (Coded_Picture_Width >> 1) * Coded_Picture_Height);
          } else {
             conv422to444_packed(yuv422, yuv444);
          }
-         STOP_TIME("422->444");
+         time_end("422->444");
          free(yuv422);
 
          // convert packed 444 to rgb32
          uint8_t* rgb = alloc(4 * Coded_Picture_Width * Coded_Picture_Height);
 
-         START_TIME();
+         time_start();
          if (acc_type & ACC_YUV444TORGB) {
-            convYuvToRgb_accelerate(yuv444, rgb, 4 * Coded_Picture_Width * Coded_Picture_Height);
+            acc_yuv444toRgb32(yuv444, rgb, 4 * Coded_Picture_Width * Coded_Picture_Height);
             // free(rgb);
             // rgb = yuv444;
          } else {
             convYuvToRgb_packed(yuv444, rgb, 4 * Coded_Picture_Width * Coded_Picture_Height);
          }
-         STOP_TIME("444->RGB");
+         time_end("444->RGB");
          free(yuv444);
 
          if (vinfo.bits_per_pixel == 32) {
@@ -398,13 +352,13 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
          } else {
             uint8_t* rgb16 = alloc(2 * Coded_Picture_Width * Coded_Picture_Height);
 
-            START_TIME();
+            time_start();
             if (acc_type & ACC_RGB32TO16) {
-               convRgb32to16_accelerate(rgb, rgb16, 4 * Coded_Picture_Width * Coded_Picture_Height);
+               acc_rgb32toRgb16(rgb, rgb16, 4 * Coded_Picture_Width * Coded_Picture_Height);
             } else {
                convRgb32to16_packed(rgb, rgb16, 4 * Coded_Picture_Width * Coded_Picture_Height);
             }
-            STOP_TIME("RGB32->RGB16");
+            time_end("RGB32->RGB16");
             free(rgb);
 
             for (i = 0; i < height; i++) {
@@ -421,50 +375,6 @@ static void display(unsigned char *src[], int offset, int incr, int height) {
       Error(Error_Text);
    }
 
-}
-
-static void convYuv422ToRgb16_accelerate(uint8_t *src, uint8_t *dst, int size) {
-   struct request acc_req = {
-      .src    = src,
-      .dest   = dst,
-      .len    = size,
-      .opcode = 1,
-      .attr   = 3
-   };
-
-   if (ioctl(accfd, 1, &acc_req) == -1) {
-      Error("Unable to issue instruction to YUV422toRGB16 accelerator\n");
-   }
-
-   int status = 1;
-
-   while (status) {
-      if (ioctl(accfd, 0, &status) == -1) {
-         Error("Unable to query status of accelerator\n");
-      }
-   }
-}
-
-static void convRgb32to16_accelerate(uint8_t *src, uint8_t *dst, int size) {
-   struct request acc_req = {
-      .src    = src,
-      .dest   = dst,
-      .len    = size,
-      .opcode = 3,
-      .attr   = 0
-   };
-
-   if (ioctl(accfd, 1, &acc_req) == -1) {
-      Error("Unable to issue instruction to RGB32TO16 accelerator\n");
-   }
-
-   int status = 1;
-
-   while (status) {
-      if (ioctl(accfd, 0, &status) == -1) {
-         Error("Unable to query status of accelerator\n");
-      }
-   }
 }
 
 static void convRgb32to16_packed(uint8_t *src, uint8_t *dst, int size) {
@@ -540,30 +450,6 @@ static void convYuvToRgb_packed(unsigned char *src, unsigned char *dst, int size
    }
 
 }
-
-
-static void convYuvToRgb_accelerate(unsigned char *src, unsigned char *dst, int size) {
-   struct request acc_req = {
-      .src    = src,
-      .dest   = dst,
-      .len    = size,
-      .opcode = 2,
-      .attr   = 0
-   };
-
-   if (ioctl(accfd, 1, &acc_req) == -1) {
-      Error("Unable to issue instruction to YUV444toRGB accelerator\n");
-   }
-
-   int status = 1;
-
-   while (status) {
-      if (ioctl(accfd, 0, &status) == -1) {
-         Error("Unable to query status of accelerator\n");
-      }
-   }
-}
-
 
 /* separate headerless files for y, u and v */
 static void store_yuv(outname, src, offset, incr, height)
@@ -832,28 +718,6 @@ unsigned char *src, *dst;
       }
       src += w;
       dst += Coded_Picture_Width;
-   }
-}
-
-static void conv422to444_accelerate(unsigned char *src, unsigned char *dst, int size) {
-   struct request acc_req = {
-      .src    = src,
-      .dest   = dst,
-      .len    = size,
-      .opcode = 1,
-      .attr   = 0
-   };
-
-   if (ioctl(accfd, 1, &acc_req) == -1) {
-      Error("Unable to issue instruction to YUV422to444 accelerator");
-   }
-
-   int status = 1;
-
-   while (status) {
-      if (ioctl(accfd, 0, &status) == -1) {
-         Error("Unable to query status of accelerator");
-      }
    }
 }
 
